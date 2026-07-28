@@ -1,0 +1,43 @@
+ARM: do not symbolise addresses when printing an Oops
+
+The vendor xm_*.ko modules make module symbol lookup fault (get_ksymbol
+dereferences a NULL strtab). Because that lookup is reached from the Oops
+printer itself, the first fault in any vendor module becomes an endless
+recursive fault storm: no usable trace and the board wedges until power
+is cycled. For a camera that is unacceptable - a driver fault in a
+teardown path must kill the process, not the device. Printing raw
+addresses breaks the recursion; module addresses are still resolvable
+offline against /sys/module/<mod>/sections/.text.
+
+--- a/arch/arm/kernel/traps.c	2026-07-26 10:28:20.562434568 +0000
++++ b/arch/arm/kernel/traps.c	2026-07-26 10:28:20.602435033 +0000
+@@ -64,7 +64,14 @@
+ 
+ void dump_backtrace_entry(unsigned long where, unsigned long from, unsigned long frame)
+ {
+-#ifdef CONFIG_KALLSYMS
++/*
++ * Deliberately NOT symbolising here: on this platform resolving a module
++ * address can fault inside get_ksymbol() (NULL strtab), and doing that from
++ * within the Oops printer turns the first fault into an unrecoverable
++ * recursive fault storm that wedges the board. Raw addresses keep an Oops
++ * an ordinary Oops: the faulting task dies, the system survives.
++ */
++#if 0
+ 	printk("[<%08lx>] (%ps) from [<%08lx>] (%pS)\n", where, (void *)where, from, (void *)from);
+ #else
+ 	printk("Function entered at [<%08lx>] from [<%08lx>]\n", where, from);
+--- a/arch/arm/kernel/process.c	2026-07-26 10:28:20.572434684 +0000
++++ b/arch/arm/kernel/process.c	2026-07-26 10:28:20.602435033 +0000
+@@ -118,8 +118,9 @@
+ 
+ 	show_regs_print_info(KERN_DEFAULT);
+ 
+-	print_symbol("PC is at %s\n", instruction_pointer(regs));
+-	print_symbol("LR is at %s\n", regs->ARM_lr);
++	/* raw addresses only - see the note in dump_backtrace_entry() */
++	printk("PC is at 0x%08lx\n", instruction_pointer(regs));
++	printk("LR is at 0x%08lx\n", (unsigned long)regs->ARM_lr);
+ 	printk("pc : [<%08lx>]    lr : [<%08lx>]    psr: %08lx\n"
+ 	       "sp : %08lx  ip : %08lx  fp : %08lx\n",
+ 		regs->ARM_pc, regs->ARM_lr, regs->ARM_cpsr,

@@ -1,0 +1,36 @@
+ARM: kprobes: reset current_kprobe when a pre-handler returns non-zero
+
+On ARM, kprobe_handler() only calls reset_current_kprobe() inside the branch
+taken when the pre-handler returns 0. The non-zero return was reserved for
+jprobes, whose break_handler was expected to do the reset on re-entry.
+
+Any other user of the common "modify regs->ARM_pc and return non-zero to say
+I redirected execution" idiom therefore leaves the per-CPU current_kprobe
+pointer set forever. From that moment kprobe_running() never returns NULL
+again, so every later kprobe hit on that CPU takes the "we're recursing"
+path: it bumps nmissed, single-steps the probed instruction and continues
+WITHOUT EVER CALLING THAT PROBE'S pre_handler.
+
+The failure is silent and very confusing to debug: the breakpoint is still
+physically installed (an Oops dump shows 0xde18 at the probe site) and
+execution flows straight through it. In practice only the first probe that
+redirects works, and every probe registered anywhere in the system is dead
+from then on.
+
+Move reset_current_kprobe() out of the conditional so the per-CPU state is
+cleared on every path, which is what every other architecture does and what
+mainline ended up with after jprobes were removed (jprobes are the only user
+that wanted the old behaviour, and nothing here uses them).
+
+--- a/arch/arm/probes/kprobes/core.c
++++ b/arch/arm/probes/kprobes/core.c
+@@ -301,8 +301,8 @@
+ 					kcb->kprobe_status = KPROBE_HIT_SSDONE;
+ 					p->post_handler(p, regs, 0);
+ 				}
+-				reset_current_kprobe();
+ 			}
++			reset_current_kprobe();
+ 		} else {
+ 			/*
+ 			 * Probe hit but conditional execution check failed,
