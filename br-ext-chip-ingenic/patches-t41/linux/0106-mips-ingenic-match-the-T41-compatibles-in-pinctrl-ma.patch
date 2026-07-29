@@ -1,0 +1,100 @@
+From bc034e872b1aaf6d119a28a9896fb969a9b63c66 Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Tue, 28 Jul 2026 13:59:08 +0000
+Subject: [PATCH 106/111] mips: ingenic: match the T41 compatibles in pinctrl,
+ mac, i2c and cpufreq
+
+Without these the T41 device tree nodes never bind. pinctrl is the one
+that hurts: uart1, sfc0 and msc0 all defer forever waiting for
+/apb/pinctrl@0x10010000, and because the real console never registers,
+serial output stops dead the moment the boot console is handed over. The
+kernel is fine - it just goes silent, which makes it look like a hang.
+
+Each entry is added alongside the existing ones, never replacing them,
+and each is behind CONFIG_SOC_T41 so that a build for any other SoC gets
+a byte-identical object rather than a shifted string table.
+
+Two notes.
+
+T41's pinctrl block is not identical to T40's: PortA pins 0-19 have a
+fourth drive-strength bit (PxPDS3 at 0x1a0, so strength is 0-15 rather
+than 0-7), and the PC-only PxPSMT1/PxPHE registers are replaced by a
+PortA strong-pull-up. None of that is reachable here - this driver never
+touches PxPSMT1 or PxPHE, and no T41 device tree in this tree requests a
+drive strength or slew rate - so only the compatible is added. If a board
+ever needs GPIO drive strength on T41, that path has to be ported too.
+
+ingenic_cpufreq_match[] has a pre-existing bug: its single element
+carries two .compatible designated initialisers, so the second silently
+overwrites the first and "ingenic,t40-cpufreq" never matches anything.
+That is left exactly as it is - fixing it would change T40 behaviour,
+which is out of scope here. T41 gets its own separate element.
+
+PWM is deliberately not included: upstream's T41 tree replaces the
+generic "ingenic,pwm" match rather than adding to it, and this camera
+drives its IR-cut, IR and white LEDs from GPIOs, so nothing needs it yet.
+---
+ drivers/cpufreq/ingenic-cpufreq.c          | 5 +++++
+ drivers/i2c/busses/i2c-ingenic.c           | 3 +++
+ drivers/net/ethernet/ingenic/ingenic_mac.c | 3 +++
+ drivers/pinctrl/pinctrl-ingenic.c          | 3 +++
+ 4 files changed, 14 insertions(+)
+
+diff --git a/drivers/cpufreq/ingenic-cpufreq.c b/drivers/cpufreq/ingenic-cpufreq.c
+index 57cf62f7..fabd2c60 100644
+--- a/drivers/cpufreq/ingenic-cpufreq.c
++++ b/drivers/cpufreq/ingenic-cpufreq.c
+@@ -243,6 +243,11 @@ static const struct of_device_id ingenic_cpufreq_match[] = {
+ 		.compatible = "ingenic,t40-cpufreq",
+ 		.compatible = "ingenic,x2000-v12-cpufreq",
+ 	},
++#ifdef CONFIG_SOC_T41
++	{
++		.compatible = "ingenic,t41-cpufreq",
++	},
++#endif
+ 	{},
+ };
+ 
+diff --git a/drivers/i2c/busses/i2c-ingenic.c b/drivers/i2c/busses/i2c-ingenic.c
+index f1185eb8..a1e41e6c 100644
+--- a/drivers/i2c/busses/i2c-ingenic.c
++++ b/drivers/i2c/busses/i2c-ingenic.c
+@@ -1064,6 +1064,9 @@ static const struct of_device_id ingenic_i2c_dt_match[] = {
+ 	{ .compatible = "ingenic,i2c" },
+ 	{ .compatible = "ingenic,x2000-i2c" },
+ 	{ .compatible = "ingenic,t40-i2c" },
++#ifdef CONFIG_SOC_T41
++	{ .compatible = "ingenic,t41-i2c" },
++#endif
+ 	{},
+ };
+ MODULE_DEVICE_TABLE(of, ingenic_i2c_dt_match);
+diff --git a/drivers/net/ethernet/ingenic/ingenic_mac.c b/drivers/net/ethernet/ingenic/ingenic_mac.c
+index 85f6ee0a..7395289e 100644
+--- a/drivers/net/ethernet/ingenic/ingenic_mac.c
++++ b/drivers/net/ethernet/ingenic/ingenic_mac.c
+@@ -2353,6 +2353,9 @@ static int ingenic_mac_resume(struct platform_device *pdev)
+ 
+ static const struct of_device_id ingenic_mac_dt_match[] = {
+ 	{ .compatible = "ingenic,t40-mac", .data = NULL },
++#ifdef CONFIG_SOC_T41
++	{ .compatible = "ingenic,t41-mac", .data = NULL },
++#endif
+ 	{},
+ };
+ MODULE_DEVICE_TABLE(of, ingenic_mac_dt_match);
+diff --git a/drivers/pinctrl/pinctrl-ingenic.c b/drivers/pinctrl/pinctrl-ingenic.c
+index fe005dfc..86a760ee 100644
+--- a/drivers/pinctrl/pinctrl-ingenic.c
++++ b/drivers/pinctrl/pinctrl-ingenic.c
+@@ -1730,6 +1730,9 @@ static const struct ingenic_priv common_priv_data[] = {
+ 
+ static const struct of_device_id ingenic_pinctrl_dt_match[] = {
+ 	{ .compatible = "ingenic,t40-pinctrl", .data = (void *)common_priv_data},
++#ifdef CONFIG_SOC_T41
++	{ .compatible = "ingenic,t41-pinctrl", .data = (void *)common_priv_data},
++#endif
+ 	{ .compatible = "ingenic,x2000-v12-pinctrl", .data = (void *)common_priv_data},
+ 	{},
+ };

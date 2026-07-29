@@ -1,0 +1,122 @@
+From 246d4fa3a85efbf11d45c744494060fec15d9272 Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Tue, 28 Jul 2026 14:32:33 +0000
+Subject: [PATCH 108/111] mfd: ingenic-tcu: support the single-interrupt TCU on
+ T41
+
+T40 wires the timer/counter unit to three interrupts and declares
+tcu_int0, tcu_int1 and tcu_int2 in its device tree. T41 routes the whole
+unit through one, and declares only tcu_int0. This driver treats all
+three as mandatory, so on T41 the probe fails at the second one:
+
+    ingenic-tcu 10002000.tcu: int1:unable to get IRQ from DT, -61
+
+That single failure is quietly expensive. The TCU is an MFD parent, so
+none of its children are created either - including the watchdog. With no
+watchdog device, ingenic_wdt_probe() never runs, the m_wdt global stays
+NULL, and the deprecated wdt_utils shutdown handler in ingenic_wdt.c
+dereferences it on the way down:
+
+    Unable to handle kernel paging request at virtual address 00000060
+    epc : ingenic_wdt_stop+0x8/0x2c
+    ra  : platform_drv_shutdown+0x24/0x3c
+    ... device_shutdown -> kernel_restart -> SyS_reboot
+    Kernel panic - not syncing: Attempted to kill init!
+
+so "reboot" oopses instead of rebooting. The timers are dead too, which
+is the more likely reason the watchdog reset that jz_wdt_restart() arms
+never fires and the board spins printing "check wdt.".
+
+The interrupt topology genuinely differs, so three things change under
+CONFIG_SOC_T41 and nothing changes for anyone else:
+
+  - probe requires only tcu_int0;
+  - setup_tcu_irq() chains the demux handler on tcu_int0 rather than
+    tcu_int2, and installs no per-interrupt chip handlers, since there
+    are no separate line interrupts to chip;
+  - ingenic_tcu_channel_to_virq() drops the channel 5 and channel 15
+    special cases, which exist only because those channels have their own
+    interrupt lines on T40.
+
+This mirrors the vendor's own T41 driver, which carries a single
+irq_tcu0 field and none of the above special cases.
+---
+ drivers/mfd/ingenic-tcu.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/drivers/mfd/ingenic-tcu.c b/drivers/mfd/ingenic-tcu.c
+index a98d9d49..864f1a74 100644
+--- a/drivers/mfd/ingenic-tcu.c
++++ b/drivers/mfd/ingenic-tcu.c
+@@ -469,6 +469,8 @@ void ingenic_tcu_channel_to_virq(struct ingenic_tcu_chn *chn)
+ {
+ 	int index;
+ 
++#ifndef CONFIG_SOC_T41
++	/* On T41 every channel is demuxed from tcu_int0; none is dedicated. */
+ 	if(chn->cib.id == 5) {
+ 		chn->virq[0] = tcu->irq_tcu1;
+ 		return;
+@@ -477,6 +479,7 @@ void ingenic_tcu_channel_to_virq(struct ingenic_tcu_chn *chn)
+ 		chn->virq[0] = tcu->irq_tcu0;
+ 		return;
+ 	}
++#endif
+ 	index = chn->cib.id * 2;
+ 
+ 	switch (chn->irq_type) {
+@@ -754,15 +757,21 @@ static void tcu_irq_demux(struct irq_desc *desc)
+ 
+ static int __init setup_tcu_irq(struct ingenic_tcu *tcu)
+ {
++#ifndef CONFIG_SOC_T41
+ 	irq_set_chip_and_handler(tcu->irq_tcu0, &tcu_irq_chip, handle_level_irq);
+ 	irq_set_chip_and_handler(tcu->irq_tcu1, &tcu_irq_chip, handle_level_irq);
++#endif
+ 
+ 	tcu->irq_domain = irq_domain_add_linear(tcu->np, tcu->channel_irq_num, &tcu2_irq_domain_ops, (void *)tcu);
+ 	if(!tcu->irq_domain) {
+ 		pr_err("Failed to add tcu irq into irq domain\n");
+ 		return -ENOMEM;
+ 	}
++#ifdef CONFIG_SOC_T41
++	irq_set_chained_handler_and_data(tcu->irq_tcu0, tcu_irq_demux, tcu);
++#else
+ 	irq_set_chained_handler_and_data(tcu->irq_tcu2, tcu_irq_demux, tcu);
++#endif
+ 
+ 	return 0;
+ }
+@@ -836,6 +845,13 @@ static int ingenic_tcu_probe(struct platform_device *pdev)
+ 		dev_err(tcu->dev, "int0:unable to get IRQ from DT, %d\n", tcu->irq_tcu0);
+ 		return -ENXIO;
+ 	}
++#ifndef CONFIG_SOC_T41
++	/*
++	 * T41 routes the whole TCU through a single interrupt and its device
++	 * tree declares only tcu_int0, so requiring int1/int2 here would fail
++	 * the probe, take the MFD children (including the watchdog) with it,
++	 * and leave the timers dead.
++	 */
+ 	tcu->irq_tcu1 = of_irq_get_byname(tcu->np, "tcu_int1");
+ 	if (tcu->irq_tcu1 < 0) {
+ 		dev_err(tcu->dev, "int1:unable to get IRQ from DT, %d\n", tcu->irq_tcu1);
+@@ -846,6 +862,7 @@ static int ingenic_tcu_probe(struct platform_device *pdev)
+ 		dev_err(tcu->dev, "int2:unable to get IRQ from DT, %d\n", tcu->irq_tcu2);
+ 		return -ENXIO;
+ 	}
++#endif
+ 
+ 	tcu->clk = devm_clk_get(tcu->dev,"gate_tcu");
+ 	clk_prepare_enable(tcu->clk);
+@@ -894,8 +911,10 @@ static int ingenic_tcu_remove(struct platform_device *pdev)
+ 	irq_set_handler_data(tcu->irq_tcu0, NULL);
+ 	irq_set_chained_handler(tcu->irq_tcu0, NULL);
+ 
++#ifndef CONFIG_SOC_T41
+ 	irq_set_handler_data(tcu->irq_tcu1, NULL);
+ 	irq_set_chained_handler(tcu->irq_tcu1, NULL);
++#endif
+ 
+ 	platform_set_drvdata(pdev, NULL);
+ 

@@ -1,0 +1,133 @@
+From b5b58c5a6ce49ba88f06691f6f33e6a218371d54 Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Wed, 29 Jul 2026 01:37:11 +0000
+Subject: [PATCH] mfd: ingenic-tcu: clear the watchdog counter through
+ TCSR_CNT_CLRZ
+
+ingenic_watchdog_config() reset the counter by writing WDT_TCNT, but that
+register does not take writes on this block. The counter is cleared through
+TCSR_CNT_CLRZ, bit 10 of WDT_TCSR - the vendor's own arm sequence,
+wdt_start_count() in arch/mips/xburst2/soc-t41/reset.c, does it that way and
+never touches TCNT at all.
+
+So the write was dead code, and with it every keepalive was silently a no-op:
+the ioctl returned success, userspace believed the dog was being fed, and the
+board reset on schedule regardless. Measured on hardware with devmem - TCNT
+stepped from 0x70F8 to 0x70FC straight across a write of 0, while asserting
+CNT_CLRZ took it to zero at once.
+
+Two further details decide whether the clear lands, both measured the same way:
+the clock source bits must stay set while CNT_CLRZ is asserted, because the
+clear needs an edge in the counter's own clock domain; and that domain runs at
+a few hundred Hz against a register bus in the tens of MHz, so restoring TCSR
+on the next instruction withdraws the request about a thousand times faster
+than it can be sampled. Hold the bit and wait for TCNT to read back zero, the
+way tcu_disable_counter() already does for the ordinary channels.
+
+Also corrects the explanation in ingenic_wdt_ping(), which blamed the counter
+being left running.
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+---
+ drivers/mfd/ingenic-tcu.c      | 42 ++++++++++++++++++++++++++++++++--
+ drivers/watchdog/ingenic_wdt.c | 19 +++++++--------
+ 2 files changed, 50 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/mfd/ingenic-tcu.c b/drivers/mfd/ingenic-tcu.c
+index 47d0703f..f5b31c09 100644
+--- a/drivers/mfd/ingenic-tcu.c
++++ b/drivers/mfd/ingenic-tcu.c
+@@ -13,6 +13,7 @@
+ #include <linux/kernel.h>
+ #include <linux/err.h>
+ #include <linux/io.h>
++#include <linux/delay.h>
+ #include <linux/module.h>
+ #include <linux/slab.h>
+ #include <linux/platform_device.h>
+@@ -543,12 +544,49 @@ unsigned int ingenic_watchdog_get_data(void)
+ }
+ EXPORT_SYMBOL_GPL(ingenic_watchdog_get_data);
+ 
++/*
++ * Longest the watchdog counter clear is given to cross into the counter's own
++ * clock domain. One tick at the slowest configured rate is under 1.5 ms, so
++ * this is generous by an order of magnitude and only ever spent when the
++ * hardware misbehaves.
++ */
++#define CNT_CLRZ_WAIT_US	10000
++
+ void ingenic_watchdog_config(unsigned int tcsr_val, unsigned int timeout_value)
+ {
++	int timeout = CNT_CLRZ_WAIT_US;
++
+ 	tcu_writel(tcu, WDT_TCER, 0);
+-	tcu_writel(tcu, WDT_TCSR, tcsr_val);
+ 	tcu_writel(tcu, WDT_TDR, timeout_value);
+-	tcu_writel(tcu, WDT_TCNT, 0);
++
++	/*
++	 * Clear the counter through TCSR_CNT_CLRZ. WDT_TCNT does not take writes
++	 * on this block, so the tcu_writel(WDT_TCNT, 0) this function used to do
++	 * was dead code - which is why nothing could ever feed this watchdog.
++	 *
++	 * Two details make the difference between a clear that takes and one that
++	 * is silently lost, both measured on hardware:
++	 *
++	 *  - the clock source bits have to stay set while CNT_CLRZ is asserted.
++	 *    Writing the bit on its own leaves the counter unclocked, and the
++	 *    clear needs a counter-domain edge to land.
++	 *  - the counter is clocked at a few hundred Hz against a register bus
++	 *    running at tens of MHz, so the request has to survive long enough to
++	 *    be sampled. Restoring TCSR on the next instruction, as this did,
++	 *    withdraws it within a microsecond and it never happens.
++	 *
++	 * So hold the bit and wait for the counter to actually read back zero.
++	 * tcu_disable_counter() has the same wait for the ordinary channels,
++	 * error message and all ("the reset of counter is not finished now"); the
++	 * watchdog path simply never had one.
++	 */
++	tcu_writel(tcu, WDT_TCSR, tcsr_val | TCSR_CNT_CLRZ);
++	while (tcu_readl(tcu, WDT_TCNT) && timeout--)
++		udelay(1);
++	if (timeout <= 0)
++		pr_warn("ingenic-tcu: the watchdog counter did not clear\n");
++	tcu_writel(tcu, WDT_TCSR, tcsr_val);
++
+ 	tcu_writel(tcu, WDT_TCER, 1);
+ }
+ EXPORT_SYMBOL_GPL(ingenic_watchdog_config);
+diff --git a/drivers/watchdog/ingenic_wdt.c b/drivers/watchdog/ingenic_wdt.c
+index a99db785..9a4ba45c 100644
+--- a/drivers/watchdog/ingenic_wdt.c
++++ b/drivers/watchdog/ingenic_wdt.c
+@@ -72,16 +72,17 @@ static int ingenic_wdt_ping(struct watchdog_device *wdt_dev)
+ 	struct ingenic_wdt_drvdata *drvdata = watchdog_get_drvdata(wdt_dev);
+ 
+ 	/*
+-	 * Writing TCNT while the counter is running does nothing - the block
+-	 * ignores it. Everywhere else that touches these registers stops the
+-	 * counter first, programs it, and starts it again; ingenic_watchdog_config()
+-	 * is exactly that sequence and it zeroes TCNT in the middle of it.
++	 * WDT_TCNT is not a writable register on this block; the counter is
++	 * cleared through TCSR_CNT_CLRZ instead. A ping that wrote TCNT was
++	 * therefore silently a no-op: the keepalive ioctl succeeded, userspace
++	 * believed the dog was being fed, and the board reset on schedule anyway.
++	 * Measured on hardware with devmem - TCNT stepped straight past a write
++	 * of 0, and WDIOC_GETTIMELEFT kept counting down across pings instead of
++	 * returning to the full timeout.
+ 	 *
+-	 * So a ping that only wrote TCNT was silently a no-op: the keepalive
+-	 * ioctl succeeded, userspace believed the dog was being fed, and the
+-	 * board reset on schedule anyway. Measured with WDIOC_GETTIMELEFT read
+-	 * straight after a successful ping - it kept counting down across pings
+-	 * instead of returning to the full timeout.
++	 * Re-run the whole arm sequence instead. ingenic_watchdog_config() issues
++	 * the counter clear as its first step, exactly as the vendor's own
++	 * wdt_start_count() in soc-t41/reset.c does.
+ 	 */
+ 	wdt_config(drvdata, wdt_dev->timeout);
+ 	return 0;
+-- 
+2.34.1
+

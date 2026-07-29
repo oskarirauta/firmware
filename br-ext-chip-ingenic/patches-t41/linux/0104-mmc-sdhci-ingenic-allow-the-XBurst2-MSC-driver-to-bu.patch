@@ -1,0 +1,49 @@
+From 4d2bd1d32fef43f7086de80daaf46118a906c1b2 Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Tue, 28 Jul 2026 13:06:57 +0000
+Subject: [PATCH 104/111] mmc: sdhci-ingenic: allow the XBurst2 MSC driver to
+ build for T41
+
+The Ingenic XBurst2 SD/MMC controller driver is gated on SOC_T40 in both
+Kconfig and ingenic_sdio.c. Upstream's T41 tree changes both to SOC_T41,
+which takes the driver away from T40. Widening the condition to accept
+either SoC costs nothing and keeps T40 exactly as it was: with SOC_T40=y
+and SOC_T41 unset, "SOC_T40 || SOC_T41" and
+"defined(CONFIG_SOC_T40) || defined(CONFIG_SOC_T41)" evaluate the same as
+before, and neither edit shifts a line number.
+
+Upstream also carries unrelated changes to sdhci-ingenic.c - a manual
+card-detect entry point for SDIO wifi and a variable-scope fix - which
+are not conditional on the SoC and are not needed here: this camera has a
+real card-detect GPIO and its wifi is USB. They are deliberately left out.
+---
+ drivers/mmc/host/Kconfig        | 2 +-
+ drivers/mmc/host/ingenic_sdio.c | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/mmc/host/Kconfig b/drivers/mmc/host/Kconfig
+index 3d7e36e4..bc805dc5 100644
+--- a/drivers/mmc/host/Kconfig
++++ b/drivers/mmc/host/Kconfig
+@@ -6,7 +6,7 @@ comment "MMC/SD/SDIO Host Controller Drivers"
+ 
+ config MMC_SDHCI_INGENIC
+         tristate "Ingenic(XBurst2)  MMC/SD Card Controller(MSC) support"
+-        depends on SOC_T40
++        depends on SOC_T40 || SOC_T41
+         select MMC_SDHCI
+         help
+           This selects the Ingenic XBurst2 SD/MMC Card Controller MSC.
+diff --git a/drivers/mmc/host/ingenic_sdio.c b/drivers/mmc/host/ingenic_sdio.c
+index 9d4ee479..90d448a6 100644
+--- a/drivers/mmc/host/ingenic_sdio.c
++++ b/drivers/mmc/host/ingenic_sdio.c
+@@ -25,7 +25,7 @@
+ #if defined CONFIG_KP_AXP
+ #include<linux/regulator/consumer.h>
+ #endif
+-#ifdef CONFIG_SOC_T40
++#if defined(CONFIG_SOC_T40) || defined(CONFIG_SOC_T41)
+ #include "sdhci-ingenic.h"
+ #else
+ #include "ingenic_mmc.h"

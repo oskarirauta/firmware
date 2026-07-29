@@ -1,0 +1,5575 @@
+From e168736ec52e18128acd88e7e8a65df723b3982a Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Tue, 28 Jul 2026 12:54:51 +0000
+Subject: [PATCH 100/111] mips: xburst2: add soc-t41 machine support
+
+Adds the Ingenic T41 as a third arm of the existing XBurst2 "SOC types"
+choice, alongside SOC_T40 and SOC_X2000_V12. The machine directory comes
+from the Ingenic 4.4.94 BSP as carried by gtxaspec/thingino-linux branch
+ingenic-t41-4.4.94, which is the same BSP lineage as the ingenic-t40 tree
+this applies to - arch/mips/xburst2/core/ is file-for-file identical
+between them.
+
+The upstream T41 tree REPLACES soc-x2000-v12 with soc-t41 in Kconfig,
+Makefile and Platform. That substitution is cosmetic, so this patch adds
+the T41 arm instead: no existing line is removed and SOC_T40 and
+SOC_X2000_V12 keep working exactly as before.
+
+The one shared file touched is core/include/core_base.h. It defines
+INTC_IOBASE as 0x12300000, but both soc-t40 and soc-t41 define the same
+name as 0x10001000 in their own soc/base.h. T40 only escapes the clash
+because no T40 translation unit includes both headers; soc-t41's
+pm/pm_fastboot.c does. Upstream comments the line out, which would change
+T40. Guarding it with CONFIG_SOC_T41 cannot, because SOC_T40, SOC_T41 and
+SOC_X2000_V12 are arms of one Kconfig choice and never coexist.
+
+Verified: building OpenIPC's stock t40.generic.config from this tree
+produces object files byte-identical to a pristine tree, apart from
+__LINE__ constants shifted by the comments added here.
+---
+ arch/mips/xburst2/Kconfig                     |  15 +
+ arch/mips/xburst2/Makefile                    |   1 +
+ arch/mips/xburst2/Platform                    |   1 +
+ arch/mips/xburst2/core/include/core_base.h    |   9 +
+ arch/mips/xburst2/soc-t41/Kconfig.DT          |   2 +
+ arch/mips/xburst2/soc-t41/Makefile            |   8 +
+ arch/mips/xburst2/soc-t41/gpio.c              | 123 +++
+ .../soc-t41/include/cpu-feature-overrides.h   |  66 ++
+ arch/mips/xburst2/soc-t41/include/irq.h       |  40 +
+ arch/mips/xburst2/soc-t41/include/libdmmu.h   |  14 +
+ arch/mips/xburst2/soc-t41/include/soc/base.h  |  98 ++
+ arch/mips/xburst2/soc-t41/include/soc/cache.h |  73 ++
+ arch/mips/xburst2/soc-t41/include/soc/cpm.h   | 152 +++
+ arch/mips/xburst2/soc-t41/include/soc/ddr.h   | 119 +++
+ arch/mips/xburst2/soc-t41/include/soc/extal.h |   8 +
+ arch/mips/xburst2/soc-t41/include/soc/gpio.h  |  40 +
+ arch/mips/xburst2/soc-t41/include/soc/mmc.h   |   5 +
+ arch/mips/xburst2/soc-t41/include/soc/pdma.h  |  48 +
+ arch/mips/xburst2/soc-t41/include/soc/rtc.h   |  96 ++
+ arch/mips/xburst2/soc-t41/include/soc/sfc.h   | 211 ++++
+ .../xburst2/soc-t41/include/soc/tcsm_layout.h |  53 ++
+ arch/mips/xburst2/soc-t41/include/war.h       |  27 +
+ arch/mips/xburst2/soc-t41/libdmmu.c           | 901 ++++++++++++++++++
+ arch/mips/xburst2/soc-t41/pm/Makefile         |   4 +
+ .../soc-t41/pm/fastboot_resume_code.hex       | 427 +++++++++
+ arch/mips/xburst2/soc-t41/pm/pm.c             | 259 +++++
+ arch/mips/xburst2/soc-t41/pm/pm.h             | 193 ++++
+ arch/mips/xburst2/soc-t41/pm/pm_fastboot.c    | 506 ++++++++++
+ arch/mips/xburst2/soc-t41/pm/pm_fastboot.h    | 179 ++++
+ arch/mips/xburst2/soc-t41/pm/pm_interface.c   | 296 ++++++
+ arch/mips/xburst2/soc-t41/pm/pm_interface.h   |  36 +
+ arch/mips/xburst2/soc-t41/pm/pm_sleep.c       | 357 +++++++
+ arch/mips/xburst2/soc-t41/pm/pm_sleep.h       |  16 +
+ .../xburst2/soc-t41/pm/regs_save_restore.S    | 188 ++++
+ .../xburst2/soc-t41/pm/regs_save_restore.py   | 123 +++
+ arch/mips/xburst2/soc-t41/reset.c             | 327 +++++++
+ arch/mips/xburst2/soc-t41/serial.c            |  91 ++
+ arch/mips/xburst2/soc-t41/setup.c             | 109 +++
+ 38 files changed, 5221 insertions(+)
+ create mode 100644 arch/mips/xburst2/soc-t41/Kconfig.DT
+ create mode 100644 arch/mips/xburst2/soc-t41/Makefile
+ create mode 100644 arch/mips/xburst2/soc-t41/gpio.c
+ create mode 100644 arch/mips/xburst2/soc-t41/include/cpu-feature-overrides.h
+ create mode 100644 arch/mips/xburst2/soc-t41/include/irq.h
+ create mode 100644 arch/mips/xburst2/soc-t41/include/libdmmu.h
+ create mode 100644 arch/mips/xburst2/soc-t41/include/soc/base.h
+ create mode 100644 arch/mips/xburst2/soc-t41/include/soc/cache.h
+ create mode 100644 arch/mips/xburst2/soc-t41/include/soc/cpm.h
+ create mode 100644 arch/mips/xburst2/soc-t41/include/soc/ddr.h
+ create mode 100644 arch/mips/xburst2/soc-t41/include/soc/extal.h
+ create mode 100644 arch/mips/xburst2/soc-t41/include/soc/gpio.h
+ create mode 100644 arch/mips/xburst2/soc-t41/include/soc/mmc.h
+ create mode 100644 arch/mips/xburst2/soc-t41/include/soc/pdma.h
+ create mode 100644 arch/mips/xburst2/soc-t41/include/soc/rtc.h
+ create mode 100644 arch/mips/xburst2/soc-t41/include/soc/sfc.h
+ create mode 100644 arch/mips/xburst2/soc-t41/include/soc/tcsm_layout.h
+ create mode 100644 arch/mips/xburst2/soc-t41/include/war.h
+ create mode 100644 arch/mips/xburst2/soc-t41/libdmmu.c
+ create mode 100644 arch/mips/xburst2/soc-t41/pm/Makefile
+ create mode 100644 arch/mips/xburst2/soc-t41/pm/fastboot_resume_code.hex
+ create mode 100644 arch/mips/xburst2/soc-t41/pm/pm.c
+ create mode 100644 arch/mips/xburst2/soc-t41/pm/pm.h
+ create mode 100644 arch/mips/xburst2/soc-t41/pm/pm_fastboot.c
+ create mode 100644 arch/mips/xburst2/soc-t41/pm/pm_fastboot.h
+ create mode 100644 arch/mips/xburst2/soc-t41/pm/pm_interface.c
+ create mode 100644 arch/mips/xburst2/soc-t41/pm/pm_interface.h
+ create mode 100644 arch/mips/xburst2/soc-t41/pm/pm_sleep.c
+ create mode 100644 arch/mips/xburst2/soc-t41/pm/pm_sleep.h
+ create mode 100644 arch/mips/xburst2/soc-t41/pm/regs_save_restore.S
+ create mode 100755 arch/mips/xburst2/soc-t41/pm/regs_save_restore.py
+ create mode 100644 arch/mips/xburst2/soc-t41/reset.c
+ create mode 100644 arch/mips/xburst2/soc-t41/serial.c
+ create mode 100644 arch/mips/xburst2/soc-t41/setup.c
+
+diff --git a/arch/mips/xburst2/Kconfig b/arch/mips/xburst2/Kconfig
+index 9f6d95f5..1414ad2f 100644
+--- a/arch/mips/xburst2/Kconfig
++++ b/arch/mips/xburst2/Kconfig
+@@ -33,6 +33,17 @@ config SOC_X2000_V12
+ 	select CLKDEV_LOOKUP
+ 	select CLKSRC_INGENIC_CORE_OST
+ 
++config SOC_T41
++	bool "t41"
++	select IRQ_INGENIC_CPU
++	select CLK_T41
++	select INGENIC_INTC_CHIP
++	select PINCTRL
++	select PINCTRL_INGENIC
++	select CLKSRC_OF
++	select CLKDEV_LOOKUP
++	select CLKSRC_INGENIC_CORE_OST
++
+ endchoice
+ 
+ config INGENIC_BUILTIN_DTB
+@@ -54,6 +65,10 @@ if SOC_X2000_V12
+ source "arch/mips/xburst2/soc-x2000-v12/Kconfig.DT"
+ endif
+ 
++if SOC_T41
++source "arch/mips/xburst2/soc-t41/Kconfig.DT"
++endif
++
+ endchoice
+ 
+ config DT_T40_MODULE_BASE_DTS_FILE
+diff --git a/arch/mips/xburst2/Makefile b/arch/mips/xburst2/Makefile
+index 314a9d06..c64e9f51 100644
+--- a/arch/mips/xburst2/Makefile
++++ b/arch/mips/xburst2/Makefile
+@@ -3,3 +3,4 @@ obj-y			+= common/
+ 
+ obj-$(CONFIG_SOC_T40) += soc-t40/
+ obj-$(CONFIG_SOC_X2000_V12) += soc-x2000-v12/
++obj-$(CONFIG_SOC_T41) += soc-t41/
+diff --git a/arch/mips/xburst2/Platform b/arch/mips/xburst2/Platform
+index 549c14d0..7c210123 100644
+--- a/arch/mips/xburst2/Platform
++++ b/arch/mips/xburst2/Platform
+@@ -4,3 +4,4 @@ cflags-$(CONFIG_MACH_XBURST2)	+= -I$(srctree)/arch/mips/xburst2/core/include
+ 
+ cflags-$(CONFIG_SOC_T40)	+= -I$(srctree)/arch/mips/xburst2/soc-t40/include
+ cflags-$(CONFIG_SOC_X2000_V12)	+= -I$(srctree)/arch/mips/xburst2/soc-x2000-v12/include
++cflags-$(CONFIG_SOC_T41)	+= -I$(srctree)/arch/mips/xburst2/soc-t41/include
+diff --git a/arch/mips/xburst2/core/include/core_base.h b/arch/mips/xburst2/core/include/core_base.h
+index 993db3a3..e9d733f3 100644
+--- a/arch/mips/xburst2/core/include/core_base.h
++++ b/arch/mips/xburst2/core/include/core_base.h
+@@ -2,7 +2,16 @@
+ #define __CORE_BASE_H__
+ 
+ /* for xburst2 INTC base 0x12300000*/
++/*
++ * T41 places the interrupt controller at 0x10001000 and declares it in
++ * soc-t41/include/soc/base.h. soc-t41/pm/pm_fastboot.c includes both that
++ * header and this one, so the generic XBurst2 value must not be defined for
++ * T41 or the two collide. SOC_T40/SOC_T41/SOC_X2000_V12 are a Kconfig choice,
++ * so with CONFIG_SOC_T41 unset this file is unchanged for every other SoC.
++ */
++#ifndef CONFIG_SOC_T41
+ #define	INTC_IOBASE	0x12300000
++#endif
+ /* CCU IO base address */
+ //#define CCU_IO_BASE		(read_c0_config7 & 0xffff0000)
+ #define CCU_IO_BASE			0x12200000
+diff --git a/arch/mips/xburst2/soc-t41/Kconfig.DT b/arch/mips/xburst2/soc-t41/Kconfig.DT
+new file mode 100644
+index 00000000..9ff5b287
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/Kconfig.DT
+@@ -0,0 +1,2 @@
++config DT_T41_T41NQ
++	bool "t41nq generic camera"
+diff --git a/arch/mips/xburst2/soc-t41/Makefile b/arch/mips/xburst2/soc-t41/Makefile
+new file mode 100644
+index 00000000..ee4a1f61
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/Makefile
+@@ -0,0 +1,8 @@
++obj-y += setup.o
++obj-y += serial.o
++
++obj-y += pm/
++
++obj-y += libdmmu.o
++obj-y += gpio.o
++obj-y += reset.o
+diff --git a/arch/mips/xburst2/soc-t41/gpio.c b/arch/mips/xburst2/soc-t41/gpio.c
+new file mode 100644
+index 00000000..9df86307
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/gpio.c
+@@ -0,0 +1,123 @@
++#include <linux/kernel.h>
++#include <linux/printk.h>
++#include <linux/io.h>
++#include <soc/base.h>
++#include <soc/gpio.h>
++
++#define GPIO_PORT_OFF    0x1000
++#define GPIO_SHADOW_OFF  0x7000
++
++#define PXPIN      0x00   /* PIN Level Register */
++#define PXINT      0x10   /* Port Interrupt Register */
++#define PXINTS     0x14   /* Port Interrupt Set Register */
++#define PXINTC     0x18   /* Port Interrupt Clear Register */
++#define PXMSK      0x20   /* Port Interrupt Mask Reg */
++#define PXMSKS     0x24   /* Port Interrupt Mask Set Reg */
++#define PXMSKC     0x28   /* Port Interrupt Mask Clear Reg */
++#define PXPAT1     0x30   /* Port Pattern 1 Set Reg. */
++#define PXPAT1S    0x34   /* Port Pattern 1 Set Reg. */
++#define PXPAT1C    0x38   /* Port Pattern 1 Clear Reg. */
++#define PXPAT0     0x40   /* Port Pattern 0 Register */
++#define PXPAT0S    0x44   /* Port Pattern 0 Set Register */
++#define PXPAT0C    0x48   /* Port Pattern 0 Clear Register */
++#define PXFLG      0x50   /* Port Flag Register */
++#define PXFLGC     0x58   /* Port Flag clear Register */
++#define PXPU       0x110   /* Port PULL-UP State Register */
++#define PXPUS      0x114   /* Port PULL-UP State Set Register */
++#define PXPUC      0x118   /* Port PULL-UP State Clear Register */
++#define PXPD       0x120   /* Port PULL-DOWN State Register */
++#define PXPDS      0x124   /* Port PULL-DOWN State Set Register */
++#define PXPDC      0x128   /* Port PULL-DOWN State Clear Register */
++
++#define PZGID2LD   0xF0   /* GPIOZ Group ID to load */
++
++#define SHADOW 5
++
++static const unsigned long gpiobase[] = {
++    [0] = (unsigned long)CKSEG1ADDR(GPIO_IOBASE + 0 * GPIO_PORT_OFF),
++    [1] = (unsigned long)CKSEG1ADDR(GPIO_IOBASE + 1 * GPIO_PORT_OFF),
++    [2] = (unsigned long)CKSEG1ADDR(GPIO_IOBASE + 2 * GPIO_PORT_OFF),
++    [3] = (unsigned long)CKSEG1ADDR(GPIO_IOBASE + 3 * GPIO_PORT_OFF),
++    [4] = (unsigned long)CKSEG1ADDR(GPIO_IOBASE + 4 * GPIO_PORT_OFF),
++
++    [SHADOW] = (unsigned long)CKSEG1ADDR(GPIO_IOBASE + GPIO_SHADOW_OFF),
++};
++
++#define GPIO_ADDR(port, reg) ((volatile unsigned long *)(gpiobase[port] + reg))
++
++static inline void gpio_write(int port, unsigned int reg, int val)
++{
++    *GPIO_ADDR(port, reg) = val;
++}
++
++static inline unsigned int gpio_read(int port, unsigned int reg)
++{
++    return *GPIO_ADDR(port, reg);
++}
++
++static void hal_gpio_port_set_func(int port, unsigned int pins, enum gpio_function func)
++{
++    /* func option */
++    if (func & 0x10) {
++        if (func & 0x8)
++            gpio_write(port, PXINTS, pins);
++        else
++            gpio_write(port, PXINTC, pins);
++
++        if (func & 0x4)
++            gpio_write(port, PXMSKS, pins);
++        else
++            gpio_write(port, PXMSKC, pins);
++
++        if (func & 0x2)
++            gpio_write(port, PXPAT1S, pins);
++        else
++            gpio_write(port, PXPAT1C, pins);
++
++        if (func & 0x1)
++            gpio_write(port, PXPAT0S, pins);
++        else
++            gpio_write(port, PXPAT0C, pins);
++
++        /* configure PzGID2LD to specify which port group to load */
++        //gpio_write(SHADOW, PZGID2LD, port);
++    }
++
++    if (func & 0x80) {
++        int pull = (func >> 5) & 0x3;
++        if (pull == 0) { // no pull
++            gpio_write(port, PXPUC, pins);
++            gpio_write(port, PXPDC, pins);
++        }
++        if (pull == 1) { // pull up
++            gpio_write(port, PXPDC, pins);
++            gpio_write(port, PXPUS, pins);
++        }
++        if (pull == 2) { // pull down
++            gpio_write(port, PXPUC, pins);
++            gpio_write(port, PXPDS, pins);
++        }
++    }
++}
++
++unsigned long ingenic_pinctrl_lock(int port);
++void ingenic_pinctrl_unlock(int port, unsigned long flags);
++
++int jzgpio_set_func(int port, enum gpio_function func, unsigned long pins)
++{
++    unsigned long flags;
++
++    if (port < 0 || port > 4) {
++        printk(KERN_ERR "gpio: invalid gpio port for x2000: %d\n", port);
++        return -EINVAL;
++    }
++
++    flags = ingenic_pinctrl_lock(port);
++
++    hal_gpio_port_set_func(port, pins, func);
++
++    ingenic_pinctrl_unlock(port, flags);
++
++    return 0;
++}
++EXPORT_SYMBOL(jzgpio_set_func);
+diff --git a/arch/mips/xburst2/soc-t41/include/cpu-feature-overrides.h b/arch/mips/xburst2/soc-t41/include/cpu-feature-overrides.h
+new file mode 100644
+index 00000000..145823e5
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/include/cpu-feature-overrides.h
+@@ -0,0 +1,66 @@
++/*
++ *  Copyright (C) 2008 Ingenic Semiconductor Inc.
++ *
++ *  Author: <zpzhong@ingenic.cn>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++
++#ifndef __ASM_MACH_INGENIC_CPU_FEATURE_OVERRIDES_H__
++#define __ASM_MACH_INGENIC_CPU_FEATURE_OVERRIDES_H__
++
++
++#define cpu_dcache_size()       	(32 * 1024)
++#define cpu_dcache_ways()       	8
++#define cpu_dcache_line_size()  	32
++#define cpu_icache_size()       	(32 * 1024)
++#define cpu_icache_ways()       	8
++#define cpu_icache_line_size()  	32
++#define cpu_has_xpa			0
++#define cpu_has_tlb                     1
++#define cpu_has_tlbinv                  1
++#define cpu_has_4kex                    1
++#define cpu_has_3k_cache                0
++#define cpu_has_4k_cache                1
++#define cpu_has_tx39_cache              0
++#define cpu_has_fpu                     1
++#define cpu_has_32fpr                   0
++#define cpu_has_counter                 0
++#define cpu_has_watch                   1
++#define cpu_has_divec                   1
++#define cpu_has_vce                     0
++#define cpu_has_cache_cdex_p            0
++#define cpu_has_cache_cdex_s            0
++#define cpu_has_prefetch                1
++#define cpu_has_mcheck                  1
++#define cpu_has_ejtag                   0
++#define cpu_has_llsc                    1
++#define kernel_uses_llsc		cpu_has_llsc
++#define cpu_has_mips16                  0
++#define cpu_has_mdmx                    0
++#define cpu_has_mips3d                  0
++#define cpu_has_smartmips               0
++#define cpu_has_vtag_icache             0
++#define cpu_has_dc_aliases              0
++#define cpu_has_ic_fills_f_dc           0
++#define cpu_has_pindexed_dcache         0
++#define cpu_icache_snoops_remote_store  0
++#define cpu_has_mips32r1                0
++#define cpu_has_mips32r2                1
++#define cpu_has_mips64r1                0
++#define cpu_has_mips64r2                0
++#define cpu_has_dsp                     0
++#define cpu_has_mipsmt                  0
++#define cpu_has_userlocal               1
++#define cpu_has_rixi                    1
++#define cpu_has_nofpuex                 0
++#define cpu_has_64bits                  0
++#define cpu_has_64bit_zero_reg          0
++#define cpu_has_vint                    0
++#define cpu_has_veic                    0
++#define cpu_has_inclusive_pcaches       0
++#define kernel_uses_smartmips_rixi      0
++#define cpu_has_mxuv3                   1
++#endif
+diff --git a/arch/mips/xburst2/soc-t41/include/irq.h b/arch/mips/xburst2/soc-t41/include/irq.h
+new file mode 100644
+index 00000000..11cef19d
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/include/irq.h
+@@ -0,0 +1,40 @@
++/*
++ *  Copyright (C) 2010 Ingenic Semiconductor Inc.
++ *
++ *  Author: <zpzhong@ingenic.cn>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++
++#ifndef __ASM_MACH_INGENIC_IRQ_H__
++#define __ASM_MACH_INGENIC_IRQ_H__
++#include <irq_cpu.h>
++#include <dt-bindings/interrupt-controller/mips-irq.h>
++
++enum {
++#define GPIO_NR_IRQS	(32 * 5 + 16)
++	IRQ_GPIO_BASE = (IRQ_INTC_END + 1),
++	IRQ_GPIO_END = IRQ_GPIO_BASE + GPIO_NR_IRQS - 1,
++
++#define TCU_NR_IRQS	(8)
++	IRQ_TCU_BASE,
++	IRQ_TCU_END = IRQ_TCU_BASE + TCU_NR_IRQS - 1,
++
++#define MCU_NR_IRQS    (5)
++	IRQ_MCU_BASE,
++	IRQ_MCU_END = IRQ_MCU_BASE + MCU_NR_IRQS - 1,
++
++#define SADC_NR_IRQS	(8)
++	IRQ_SADC_BASE,
++	IRQ_SADC_END = IRQ_SADC_BASE + SADC_NR_IRQS - 1,
++
++#define RESERVED_NR_IRQS       (150)
++	IRQ_RESERVED_BASE,
++	IRQ_RESERVED_END = IRQ_RESERVED_BASE + RESERVED_NR_IRQS - 1,
++
++	NR_IRQS,
++};
++
++#endif
+diff --git a/arch/mips/xburst2/soc-t41/include/libdmmu.h b/arch/mips/xburst2/soc-t41/include/libdmmu.h
+new file mode 100644
+index 00000000..e2a90d8d
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/include/libdmmu.h
+@@ -0,0 +1,14 @@
++#ifndef _LIBDMMU_
++#define _LIBDMMU_
++
++#include <linux/device.h>
++
++unsigned long dmmu_map(struct device *dev,unsigned long vaddr,unsigned long len);
++int dmmu_flush_cache(unsigned long vaddr, unsigned long len);
++int dmmu_unmap(struct device *dev,unsigned long vaddr, int len);
++int dmmu_unmap_all(struct device *dev);
++void dmmu_dump_vaddr(unsigned long vaddr);
++int dmmu_memory_smash(unsigned long vaddr, int smash_mode);
++int dmmu_dump_map(unsigned long vaddr);
++
++#endif
+diff --git a/arch/mips/xburst2/soc-t41/include/soc/base.h b/arch/mips/xburst2/soc-t41/include/soc/base.h
+new file mode 100644
+index 00000000..444a28c4
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/include/soc/base.h
+@@ -0,0 +1,98 @@
++
++#ifndef __JZSOC_SOC_DEV_H__
++#define __JZSOC_SOC_DEV_H__
++
++/*
++ * Define the module base addresses
++ */
++
++/* AHB0 BUS Devices Base */
++#define HARB0_IOBASE	        0x13000000
++#define DDRC_BASE	            0xb34f0000
++#define DDRC1_IOBASE	        0x13010000 /*DDR_APB_BASE*/
++#define DDRC_IOBASE	            0x134f0000 /*TODO:*/
++#define DDRPHY_IOBASE	        0x13011000 /*TODO:*/
++#define LDC_IOBASE	            0x13040000
++#define LCDC_IOBASE	            0x13050000
++#define MSC0_IOBASE	            0x13060000
++#define MSC1_IOBASE	            0x13070000
++#define IPU_IOBASE	            0x13080000
++#define MONITOR_IOBASE	        0x130a0000
++#define I2D_IOBASE	            0x130b0000
++#define VO_IOBASE	            0x130c0000
++#define DRAW_BOX_IOBASE	        0x130d0000
++#define ISP_IOBASE	            0x13300000
++
++/* AHB1 BUS Devices Base */
++#define EL200_IOBASE            0x13100000
++#define JPEG_IOBASE				0x13280000
++#define IVDC_IOBASE			    0x13200000
++#define LZMA0_IOBASE			0x132c0000
++#define LZMA1_IOBASE			0x132e0000
++#define RADIX_IOBASE_UNIT(ID)	(RADIX_IOBASE + 0x400000 * ID)
++#define AVPU_IOBASE             0x13200000
++#define AVPU_IOBASE_UNIT(ID)	(AVPU_IOBASE + 0x400000 * ID)
++
++/* AHB2 BUS Devices Base */
++#define HARB2_IOBASE	        0x13400000
++#define NEMC_IOBASE	            0x13410000
++#define PDMA_IOBASE	            0x13420000
++#define AES_IOBASE  	        0x13430000
++#define SFC0_IOBASE	            0x13440000
++#define SFC1_IOBASE	            0x13450000
++#define PWM_IOBASE	            0x13460000
++#define HASH_IOBASE	            0x13480000
++#define GMAC_IOBASE	            0x134b0000
++#define RSA_IOBASE	            0x134c0000
++#define DMIC_IOBASE	            0x134d0000
++#define OTG_IOBASE	            0x13500000
++#define EFUSE_IOBASE	        0x13540000
++#define INTC_IOBASE	            0x10001000
++
++/* CPU and OST */
++#define G_OST_IOBASE	        0x12000000 /* G_OST_BASE */
++#define N_OST_IOBASE            0x12100000 /* N_OST_BASE */
++#define CCU_IOBASE	            0x12200000
++#define INTCN_IOBASE	        0x12300000
++#define SRAM_IOBASE	            0x12400000
++#define NNDMA_IOBASE	        0x12500000
++#define LEPCCU_IOBASE	        0x12a00000  /* RISC-V CCU */
++#define AIP_IOBASE	            0x12b00000  /* AIP base addr */
++
++/* APB BUS Devices Base */
++#define CPM_IOBASE	            0x10000000
++#define TCU_IOBASE	            0x10002000
++#define WDT_IOBASE	            0x10002000
++#define RTC_IOBASE	            0x10003000
++#define RTC_FTBT_IOBASE	        0x10004000
++#define GPIO_IOBASE	            0x10010000
++#define AIC0_IOBASE	            0x10020000
++#define CODEC_IOBASE	        0x10021000
++#define MIPI_PHY_IOBASE         0x10022000
++#define MIPI_CSI_IOBASE	        0x10023000
++#define UART0_IOBASE	        0x10030000
++#define UART1_IOBASE	        0x10031000
++#define UART2_IOBASE	        0x10032000
++#define UART3_IOBASE	        0x10033000
++#define UART4_IOBASE	        0x10034000
++#define UART5_IOBASE	        0x10035000
++#define SSISLV_IOBASE	        0x10040000
++#define SSI0_IOBASE	            0x10043000
++#define SSI1_IOBASE 	        0x10044000
++#define I2C0_IOBASE	            0x10050000
++#define I2C1_IOBASE	            0x10051000
++#define I2C2_IOBASE 	        0x10052000
++#define USB_IOBASE 	            0x10060000
++#define DES_IOBASE  	        0x10061000
++#define SADC_IOBASE	            0x10070000
++#define DTRNG_IOBASE            0x10072000
++
++/* NAND CHIP Base Address*/
++#define NEMC_CS1_IOBASE         0X1b000000
++#define NEMC_CS2_IOBASE         0X1a000000
++#define NEMC_CS3_IOBASE         0X19000000
++#define NEMC_CS4_IOBASE         0X18000000
++#define NEMC_CS5_IOBASE         0X17000000
++#define NEMC_CS6_IOBASE         0X16000000
++
++#endif
+diff --git a/arch/mips/xburst2/soc-t41/include/soc/cache.h b/arch/mips/xburst2/soc-t41/include/soc/cache.h
+new file mode 100644
+index 00000000..249e4230
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/include/soc/cache.h
+@@ -0,0 +1,73 @@
++#ifndef __CHIP_CACHE_H__
++#define __CHIP_CACHE_H__
++#include <asm/cacheops.h>
++#include <asm/r4kcache.h>
++
++#define Index_Prefetch_I        0x1c
++
++
++#define cache_prefetch(label,size)					\
++do{									\
++	unsigned long addr,end;						\
++	/* Prefetch codes from label */					\
++	addr = (unsigned long)(&&label) & ~(32 - 1);			\
++	end = (unsigned long)(&&label + size) & ~(32 - 1);		\
++	end += 32;							\
++	for (; addr < end; addr += 32) {				\
++		__asm__ volatile (					\
++				".set push       \n\t"			\
++				".set mips32     \n\t"			\
++				" cache %0, 0(%1)\n\t"			\
++				".set pop        \n\t"			\
++				:					\
++				: "I" (Index_Prefetch_I), "r"(addr));	\
++	}								\
++}									\
++while(0)
++
++#define K0BASE			KSEG0
++#define CFG_DCACHE_SIZE		32768
++#define CFG_ICACHE_SIZE		32768
++#define CFG_CACHELINE_SIZE	32
++
++#define CFG_SDCACHE_SIZE	(512*1024)
++#define CFG_SDCACHELINE_SIZE	64
++
++static inline void __jz_flush_cache_all(void)
++{
++	register unsigned long addr;
++	/* Clear CP0 TagLo */
++	for (addr = K0BASE; addr < (K0BASE + CFG_DCACHE_SIZE); addr += CFG_CACHELINE_SIZE) {
++		asm volatile (".set mips32\n\t"
++					  " cache %0, 0(%1)\n\t"
++					  ".set mips32\n\t"
++					  :
++					  : "I" (Index_Writeback_Inv_D), "r"(addr));
++	}
++
++	for (addr = K0BASE; addr < (K0BASE + CFG_ICACHE_SIZE); addr += CFG_CACHELINE_SIZE) {
++		asm volatile (".set mips32\n\t"
++					  " cache %0, 0(%1)\n\t"
++					  ".set mips32\n\t"
++					  :
++					  : "I" (Index_Invalidate_I), "r"(addr));
++	}
++
++	asm volatile ("sync\n\t"
++				  "lw $0,0(%0)"
++				  ::"r" (0xa0000000));
++	/* 2nd cache */
++	for (addr = K0BASE; addr < (K0BASE + CFG_SDCACHE_SIZE); addr += CFG_SDCACHELINE_SIZE) {
++		asm volatile (".set mips32\n\t"
++					  " cache %0, 0(%1)\n\t"
++					  ".set mips32\n\t"
++					  :
++					  : "I" (Index_Writeback_Inv_SD), "r"(addr));
++	}
++
++	asm volatile ("sync\n\t"
++				  "lw $0,0(%0)"
++				  ::"r" (0xa0000000));
++}
++
++#endif /* __CHIP_CACHE_H__ */
+diff --git a/arch/mips/xburst2/soc-t41/include/soc/cpm.h b/arch/mips/xburst2/soc-t41/include/soc/cpm.h
+new file mode 100644
+index 00000000..0ec6fdd6
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/include/soc/cpm.h
+@@ -0,0 +1,152 @@
++/*
++ * JZSOC CPM register definition.
++ *
++ * CPM (Clock reset and Power control Management)
++ *
++ * Copyright (C) 2019 Ingenic Semiconductor Co., Ltd.
++ */
++
++#ifndef __CPM_H__
++#define __CPM_H__
++
++#define CPM_CPCCR		(0x00)
++#define CPM_CPPCR		(0x0c)
++#define CPM_CPAPCR		(0x10)
++#define CPM_CPMPCR		(0x14)
++#define CPM_DDRCDR		(0x2c)
++#define CPM_CPSPR		(0x34)
++#define CPM_CPSPPR		(0x38)
++#define CPM_USBPCR		(0x3c)
++#define CPM_USBRDT		(0x40)
++#define CPM_USBVBFIL	(0x44)
++#define CPM_USBPCR1		(0x48)
++#define CPM_RSACDR		(0x4c)
++#define CPM_SSI_SLVCDR	(0x50)
++#define CPM_MACCDR		(0x54)
++#define CPM_SFC0CDR		(0x60)
++#define CPM_LPCDR		(0x64)
++#define CPM_MSC0CDR		(0x68)
++#define CPM_MSC1CDR		(0x6c)
++#define CPM_I2STCDR 	(0x70)
++#define CPM_SSICDR		(0x74)
++#define CPM_I2STCDR1	(0x78)
++#define CPM_SFC1CDR		(0x7c)
++#define CPM_ISPMCDR		(0x80)
++#define CPM_I2SRCDR 	(0x84)
++#define CPM_I2SRCDR1	(0x88)
++#define CPM_EXCLKDS		(0x8c)
++#define CPM_CIMCDR		(0x90)
++#define CPM_SOFTAPP		(0x9c)
++#define CPM_LDCCDR  	(0xa0)
++#define CPM_ISPSCDR  	(0xa8)
++#define CPM_ISPACDR  	(0xac)
++#define CPM_INTR		(0xb0)
++#define CPM_INTRE		(0xb4)
++#define CPM_BT0CDR		(0xb8)
++#define CPM_EL200CDR	(0xbc)
++#define CPM_DRCG		(0xd0)
++#define CPM_CPCSR		(0xd4)
++#define CPM_CPVPCR		(0xe0)
++#define CPM_MACPHY		(0xe8)
++#define CPM_PWMCDR		(0xfc)
++
++
++#define CPM_LCR			(0x04)
++#define CPM_CLKGR		(0x20)/* def changed*/
++#define CPM_OPCR		(0x24)
++#define CPM_CLKGR1		(0x28)/* def changed*/
++#define CPM_SRBC		(0xc4)
++#define SRBC_USB_SR BIT (12)
++#define CPM_MESTSEL		(0xec)
++
++#define CPM_MEMCTRL_MA0		(0xf0)
++#define CPM_MEMCTRL_MA1	    (0xf4)
++#define CPM_MEMCTRL_MA2		(0xf8)
++
++#define CPM_RSR		(0x08)
++
++#ifndef BIT
++#define BIT(nr)  (1UL << nr)
++#endif
++
++/*USB Parameter Control Register*/
++#define USBPCR_USB_MODE                 BIT(31)
++#define USBPCR_AVLD_REG                 BIT(30)
++#define USBPCR_IDPULLUP_MASK_BIT        28
++#define USBPCR_IDPULLUP_MASK            (0x3 << USBPCR_IDPULLUP_MASK_BIT)
++#define USBPCR_IDPULLUP_OTG             (0x0 << USBPCR_IDPULLUP_MASK_BIT)
++#define USBPCR_IDPULLUP_ALWAYS_SUSPEND  (0x1 << USBPCR_IDPULLUP_MASK_BIT)
++#define USBPCR_IDPULLUP_ALWAYS          (0x2 << USBPCR_IDPULLUP_MASK_BIT)
++#define USBPCR_INCR_MASK                BIT(27)
++#define USBPCR_POR_BIT                  22
++#define USBPCR_POR                      BIT(USBPCR_POR_BIT)
++
++/*USB Reset Detect Timer Register*/
++#define USBRDT_RESUME_INTEEN            BIT(31) /*RW*/
++#define USBRDT_RESUME_INTERCLR          BIT(30) /*W0*/
++#define USBRDT_RESUME_SPEED_BIT         28  /*RW*/
++#define USBRDT_RESUME_SPEED_MSK         (0x3 << USBRDT_RESUME_SPEED_BIT)
++#define USBRDT_RESUME_SPEED_HIGH        (0x0 << USBRDT_RESUME_SPEED_BIT)
++#define USBRDT_RESUME_SPEED_FULL        (0x1 << USBRDT_RESUME_SPEED_BIT)
++#define USBRDT_RESUME_SPEED_LOW         (0x2 << USBRDT_RESUME_SPEED_BIT)
++#define USBRDT_RESUME_STATUS            BIT(27) /*RO*/
++#define USBRDT_HB_MASK                  BIT(26)
++#define USBRDT_VBFIL_LD_EN              BIT(25)
++#define USBRDT_IDDIG_EN                 24
++#define USBRDT_IDDIG_REG                23
++#define USBRDT_USBRDT_MSK               (0x7fffff)
++#define USBRDT_USBRDT(x)                ((x) & USBRDT_USBRDT_MSK)
++#define USBRDT_UTMI_RST                 BIT(27)
++
++/*USB VBUS Jitter Filter Register*/
++#define USBVBFIL_USBVBFIL(x)        ((x) & 0xffff)
++#define USBVBFIL_IDDIGFIL(x)        ((x) & (0xffff << 16))
++
++/*USB Parameter Control Register1*/
++#define USBPCR1_BVLD_REG    BIT(31)
++#define USBPCR1_DPPULLDOWN  BIT(29)
++#define USBPCR1_DMPULLDOWN  BIT(28)
++#define USBPCR1_PORT_RST    BIT(21)
++
++/*Oscillator and Power Control Register*/
++#define OPCR_IDLE			(0x1<<31)
++#define OPCR_MASK_INT		BIT(30)
++#define OPCR_SCLKACLK_GATE  BIT(28)
++#define OPCR_REQ_MODE		BIT(24)
++#define OPCR_USB_PHY_GATE   BIT(23)
++#define OPCR_TCU_RTCCLK_GATE   		BIT(21)
++#define OPCR_TCU_EXCLK_GATE   		BIT(20)
++#define OPCR_O1ST   		BIT(8) /* BIT19:BIT8 */
++#define OPCR_USB_SPENDN0    BIT(7)
++#define OPCR_USB_SPENDN1    BIT(6)
++/*
++ * T41 splits the single OPCR USB suspend bit the other XBurst2 SoCs have into
++ * one bit per port. drivers/usb/phy/phy-ingenic-inno.c is shared and drives
++ * port 0, so give it the name it expects rather than editing the shared driver.
++ */
++#define OPCR_USB_SPENDN     OPCR_USB_SPENDN0
++#define OPCR_O1SE   		BIT(4)
++#define OPCR_ERCS			(0x1<<2)
++#define OPCR_BUS_MODE   	BIT(1)
++
++#define LCR_LPM_MASK		(0x3)
++#define LCR_LPM_SLEEP		(0x1)
++
++#define CPM_LCR_PD_X2D		(0x1<<31)
++#define CPM_LCR_PD_VPU		(0x1<<30)
++#define CPM_LCR_PD_MASK		(0x3<<30)
++#define CPM_LCR_X2DS 		(0x1<<27)
++#define CPM_LCR_VPUS		(0x1<<26)
++#define CPM_LCR_STATUS_MASK	(0x3<<26)
++
++
++#define CLKGR1_VPU              (0x1<<0)
++
++#define cpm_inl(off)		inl(CPM_IOBASE + (off))
++#define cpm_outl(val,off)	outl(val,CPM_IOBASE + (off))
++#define cpm_clear_bit(val,off)	do{cpm_outl((cpm_inl(off) & ~(1 << (val))),off);}while(0)
++#define cpm_set_bit(val,off)	do{cpm_outl((cpm_inl(off) | (1 << (val))),off);}while(0)
++#define cpm_test_bit(val,off)	(cpm_inl(off) & (0x1 << (val)))
++
++#endif
++/* __CPM_H__ */
+diff --git a/arch/mips/xburst2/soc-t41/include/soc/ddr.h b/arch/mips/xburst2/soc-t41/include/soc/ddr.h
+new file mode 100644
+index 00000000..bc5fb076
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/include/soc/ddr.h
+@@ -0,0 +1,119 @@
++#ifndef _DDR_H_
++#define _DDR_H_
++
++#define DDRC_BASE   0xb34f0000
++#define DDR_PHY_OFFSET  (-0x4e0000 + 0x1000)
++#define DDRC_APB_OFFSET (-0x4e0000 + 0x2000)
++
++#define DDRC_STATUS         0x0
++#define DDRC_CFG            0x8
++#define DDRC_CTRL           0x10
++#define DDRC_LMR            0x18
++#define DDRC_DLP            0x20
++#define DDRC_AUTOSR_EN      0x28
++#define DDRC_AUTOSR_CNT     0x30
++#define DDRC_REFCNT         0x38
++#define DDRC_TIMING(n)      (0x40 + 8 * (n - 1))
++#define DDRC_MMAP0          0x78
++#define DDRC_MMAP1          0x80
++#define DDRC_BWCFG          0x88
++#define DDRC_BWSTP          0x90
++#define DDRC_BWP0WR         0x98
++#define DDRC_BWP1WR         0xa8
++#define DDRC_BWP2WR         0xb8
++#define DDRC_BWP3WR         0xc8
++#define DDRC_HREGPRO        0xd8
++#define DDRC_DBGEN          0xE0
++#define DDRC_DBGINFO        0xE8
++#define DDRC_DWCFG          (DDRC_APB_OFFSET + 0x00)
++
++#define DDRP_PIR_INIT		(1 << 0)
++#define DDRP_PIR_DLLSRST	(1 << 1)
++#define DDRP_PIR_DLLLOCK	(1 << 2)
++#define DDRP_PIR_ZCAL   	(1 << 3)
++#define DDRP_PIR_ITMSRST   	(1 << 4)
++#define DDRP_PIR_DRAMRST   	(1 << 5)
++#define DDRP_PIR_DRAMINT   	(1 << 6)
++#define DDRP_PIR_QSTRN   	(1 << 7)
++#define DDRP_PIR_EYETRN   	(1 << 8)
++#define DDRP_PIR_DLLBYP   	(1 << 17)
++#define DDRP_PIR_LOCKBYP   	(1 << 29)
++#define DDRP_PGSR_IDONE		(1 << 0)
++#define DDRP_PGSR_DLDONE	(1 << 1)
++#define DDRP_PGSR_ZCDONE	(1 << 2)
++#define DDRP_PGSR_DIDONE	(1 << 3)
++#define DDRP_PGSR_DTDONE	(1 << 4)
++#define DDRP_PGSR_DTERR 	(1 << 5)
++#define DDRP_PGSR_DTIERR 	(1 << 6)
++#define DDRP_PGSR_DFTEERR 	(1 << 7)
++#define DDRC_AUTOSR_ENABLE	(1 << 0)
++
++
++#define DDRP_PIR	(DDR_PHY_OFFSET + 0x4) /* PHY Initialization Register */
++#define DDRP_PGCR   (DDR_PHY_OFFSET + 0x8) /* PHY General Configuration Register*/
++#define DDRP_PGSR	(DDR_PHY_OFFSET + 0xc) /* PHY General Status Register*/
++#define DDRP_DLLGCR (DDR_PHY_OFFSET + 0x10) /* DLL General Control Register*/
++#define DDRP_ACDLLCR    (DDR_PHY_OFFSET + 0x14) /* AC DLL Control Register*/
++#define DDRP_PTR0   (DDR_PHY_OFFSET + 0x18) /* PHY Timing Register 0 */
++#define DDRP_PTR1   (DDR_PHY_OFFSET + 0x1c) /* PHY Timing Register 1 */
++#define DDRP_PTR2   (DDR_PHY_OFFSET + 0x20) /* PHY Timing Register 2 */
++#define DDRP_ACIOCR (DDR_PHY_OFFSET + 0x24) /* AC I/O Configuration Register */
++#define DDRP_DXCCR  (DDR_PHY_OFFSET + 0x28) /* DATX8 Common Configuration Register */
++#define DDRP_DSGCR  (DDR_PHY_OFFSET + 0x2c) /* DDR System General Configuration Register */
++#define DDRP_DCR    (DDR_PHY_OFFSET + 0x30) /* DRAM Configuration Register*/
++
++#define DDRP_DTPR0  (DDR_PHY_OFFSET + 0x34) /* DRAM Timing Parameters Register 0 */
++#define DDRP_DTPR1  (DDR_PHY_OFFSET + 0x38) /* DRAM Timing Parameters Register 1 */
++#define DDRP_DTPR2  (DDR_PHY_OFFSET + 0x3c) /* DRAM Timing Parameters Register 2 */
++#define DDRP_MR0    (DDR_PHY_OFFSET + 0x40) /* Mode Register 0 */
++#define DDRP_MR1    (DDR_PHY_OFFSET + 0x44) /* Mode Register 1 */
++#define DDRP_MR2    (DDR_PHY_OFFSET + 0x48) /* Mode Register 2 */
++#define DDRP_MR3    (DDR_PHY_OFFSET + 0x4c) /* Mode Register 3 */
++#define DDRP_ODTCR  (DDR_PHY_OFFSET + 0x50) /* ODT Configure Register */
++#define DDRP_DTAR   (DDR_PHY_OFFSET + 0x54) /* Data Training Address Register */
++#define DDRP_DTDR0  (DDR_PHY_OFFSET + 0x58) /* Data Training Data Register 0 */
++#define DDRP_DTDR1  (DDR_PHY_OFFSET + 0x5c) /* Data Training Data Register 1 */
++
++#define DDRP_DCUAR  (DDR_PHY_OFFSET + 0xc0) /* DCU Address Register */
++#define DDRP_DCUDR  (DDR_PHY_OFFSET + 0xc4) /* DCU Data Register */
++#define DDRP_DCURR  (DDR_PHY_OFFSET + 0xc8) /* DCU Run Register */
++#define DDRP_DCULR  (DDR_PHY_OFFSET + 0xcc) /* DCU Loop Register */
++#define DDRP_DCUGCR (DDR_PHY_OFFSET + 0xd0) /* DCU Gerneral Configuration Register */
++#define DDRP_DCUTPR (DDR_PHY_OFFSET + 0xd4) /* DCU Timing Parameters Register */
++#define DDRP_DCUSR0 (DDR_PHY_OFFSET + 0xd8) /* DCU Status Register 0 */
++#define DDRP_DCUSR1 (DDR_PHY_OFFSET + 0xdc) /* DCU Status Register 1 */
++
++#define DDRP_DXGCR(n)   (DDR_PHY_OFFSET + 0x1c0 + n * 0x40) /* DATX8 n General Configuration Register */
++#define DDRP_DXGSR0(n)  (DDR_PHY_OFFSET + 0x1c4 + n * 0x40) /* DATX8 n General Status Register */
++#define DDRP_DXGSR1(n)  (DDR_PHY_OFFSET + 0x1c8 + n * 0x40) /* DATX8 n General Status Register */
++#define DDRP_DXDLLCR(n) (DDR_PHY_OFFSET + 0x1cc + n * 0x40) /* DATX8 n General Status Register */
++#define DDRP_DXDQSTR(n) (DDR_PHY_OFFSET + 0x1d4 + n * 0x40) /* DATX8 n DQS Timing Register */
++#define DDRP_ZQXCR0(n)  (DDR_PHY_OFFSET + 0x180 + n * 0x10) /* ZQ impedance Control Register 0 */
++#define DDRP_ZQXCR1(n)  (DDR_PHY_OFFSET + 0x184 + n * 0x10) /* ZQ impedance Control Register 1 */
++#define DDRP_ZQXSR0(n)  (DDR_PHY_OFFSET + 0x188 + n * 0x10) /* ZQ impedance Status Register 0 */
++#define DDRP_ZQXSR1(n)  (DDR_PHY_OFFSET + 0x18c + n * 0x10) /* ZQ impedance Status Register 1 */
++
++
++#define DDRP_INNOPHY_PLL_CTRL       (DDR_PHY_OFFSET + 0x14c)
++#define DDRP_DX0GSR     (DDR_PHY_OFFSET + 0x71 * 4)
++
++#define DDRC_STATUS			0x0
++#define DDRC_CFG			0x8
++#define DDRC_CTRL			0x10
++#define DDRC_STRB			0x34
++#define DDRC_REMAP(n)           (0x9c + 4 * (n - 1))
++
++
++#define DDRP_DXnDQSTR(n)     (DDR_PHY_OFFSET + (0x10 * n + 0x75) * 4)
++#define DDRP_DXnDQTR(n)      (DDR_PHY_OFFSET + (0x10 * n + 0x74) * 4)
++
++#ifndef REG32
++#define REG32(x) *(volatile unsigned int *)(x)
++#endif
++
++#define ddr_writel(value, reg)	REG32(DDRC_BASE + reg) = (value)
++#define ddr_readl(reg)		REG32(DDRC_BASE + reg)
++
++
++
++#endif /* _DDR_H_ */
+diff --git a/arch/mips/xburst2/soc-t41/include/soc/extal.h b/arch/mips/xburst2/soc-t41/include/soc/extal.h
+new file mode 100644
+index 00000000..78541e72
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/include/soc/extal.h
+@@ -0,0 +1,8 @@
++
++#ifndef __JZSOC_EXTAL_H__
++#define __JZSOC_EXTAL_H__
++
++#define JZ_EXTAL_RTC	32768     /* RTC extal freq: 32.768 KHz */
++#define JZ_EXTAL	(CONFIG_EXTAL_CLOCK * 1000000)
++
++#endif
+diff --git a/arch/mips/xburst2/soc-t41/include/soc/gpio.h b/arch/mips/xburst2/soc-t41/include/soc/gpio.h
+new file mode 100644
+index 00000000..66c53e6e
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/include/soc/gpio.h
+@@ -0,0 +1,40 @@
++#ifndef _SOC_GPIO_H_
++#define _SOC_GPIO_H_
++
++enum gpio_function {
++    GPIO_FUNC_0    = 0x10,  //0000, GPIO as function 0 / device 0
++    GPIO_FUNC_1    = 0x11,  //0001, GPIO as function 1 / device 1
++    GPIO_FUNC_2    = 0x12,  //0010, GPIO as function 2 / device 2
++    GPIO_FUNC_3    = 0x13,  //0011, GPIO as function 3 / device 3
++    GPIO_OUTPUT0   = 0x14,  //0100, GPIO output low  level
++    GPIO_OUTPUT1   = 0x15,  //0101, GPIO output high level
++    GPIO_INPUT     = 0x16,  //0110, GPIO as input.7 also.
++    GPIO_INT_LO    = 0x18,  //1000, Low  Level trigger interrupt
++    GPIO_INT_HI    = 0x19,  //1001, High Level trigger interrupt
++    GPIO_INT_FE    = 0x1a,  //1010, Fall Edge trigger interrupt
++    GPIO_INT_RE    = 0x1b,  //1011, Rise Edge trigger interrupt
++    GPIO_INT_MASK_LO   = 0x1c,  //1100, Port is low level triggered interrupt input. Interrupt is masked.
++    GPIO_INT_MASK_HI   = 0x1d,  //1101, Port is high level triggered interrupt input. Interrupt is masked.
++    GPIO_INT_MASK_FE   = 0x1e,  //1110, Port is fall edge triggered interrupt input. Interrupt is masked.
++    GPIO_INT_MASK_RE   = 0x1f,  //1111, Port is rise edge triggered interrupt input. Interrupt is masked.
++
++    GPIO_PULL_HIZ  = 0x80,    //no pull
++    GPIO_PULL_UP   = 0xa0,    //pull high
++    GPIO_PULL_DOWN = 0xc0,    //pull low
++};
++
++#define GPIO_PA(n) (0 * 32 + (n))
++#define GPIO_PB(n) (1 * 32 + (n))
++#define GPIO_PC(n) (2 * 32 + (n))
++#define GPIO_PD(n) (3 * 32 + (n))
++
++enum gpio_port {
++	GPIO_PORT_A, GPIO_PORT_B,
++	GPIO_PORT_C, GPIO_PORT_D,
++	/* this must be last */
++	GPIO_NR_PORTS,
++};
++
++int jzgpio_set_func(int port, enum gpio_function func, unsigned long pins);
++
++#endif /* _SOC_GPIO_H_ */
+diff --git a/arch/mips/xburst2/soc-t41/include/soc/mmc.h b/arch/mips/xburst2/soc-t41/include/soc/mmc.h
+new file mode 100644
+index 00000000..6db74c17
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/include/soc/mmc.h
+@@ -0,0 +1,5 @@
++#ifndef __MMC_H
++#define __MMC_H
++
++extern int jzmmc_manual_detect(int index, int on);
++#endif
+diff --git a/arch/mips/xburst2/soc-t41/include/soc/pdma.h b/arch/mips/xburst2/soc-t41/include/soc/pdma.h
+new file mode 100644
+index 00000000..3018ebef
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/include/soc/pdma.h
+@@ -0,0 +1,48 @@
++/*
++ * This file is subject to the terms and conditions of the GNU General Public
++ * License.  See the file "COPYING" in the main directory of this archive
++ * for more details.
++ *
++ * Copyright (C) 2021 by nick shen <xianghui.shen@ingneic.com>
++ */
++#ifndef __ASM_MACH_INGENIC_PDMA_H__
++#define __ASM_MACH_INGENIC_PDMA_H__
++
++#include <dt-bindings/dma/ingenic-pdma.h>
++#define INGENIC_DMA_REQ_AUTO 0xff
++#define INGENIC_DMA_CHAN_CNT 32
++unsigned int pdma_maps[INGENIC_DMA_CHAN_CNT] = {
++	INGENIC_DMA_REQ_AUTO,
++	INGENIC_DMA_REQ_AUTO,
++	INGENIC_DMA_REQ_AIC_LOOP_RX,
++	INGENIC_DMA_REQ_AIC_TX,
++	INGENIC_DMA_REQ_AIC_F_RX,
++	INGENIC_DMA_REQ_AUTO_TX,
++	INGENIC_DMA_REQ_SADC_RX,
++	INGENIC_DMA_REQ_UART5_TX,
++	INGENIC_DMA_REQ_UART5_RX,
++	INGENIC_DMA_REQ_UART4_TX,
++	INGENIC_DMA_REQ_UART4_RX,
++	INGENIC_DMA_REQ_UART3_TX,
++	INGENIC_DMA_REQ_UART3_RX,
++	INGENIC_DMA_REQ_UART2_TX,
++	INGENIC_DMA_REQ_UART2_RX,
++	INGENIC_DMA_REQ_UART1_TX,
++	INGENIC_DMA_REQ_UART1_RX,
++	INGENIC_DMA_REQ_UART0_TX,
++	INGENIC_DMA_REQ_UART0_RX,
++	INGENIC_DMA_REQ_SSI0_TX,
++	INGENIC_DMA_REQ_SSI0_RX,
++	INGENIC_DMA_REQ_SSI1_TX,
++	INGENIC_DMA_REQ_SSI1_RX,
++	INGENIC_DMA_REQ_SLV_TX,
++	INGENIC_DMA_REQ_SLV_RX,
++	INGENIC_DMA_REQ_I2C0_TX,
++	INGENIC_DMA_REQ_I2C0_RX,
++	INGENIC_DMA_REQ_I2C1_TX,
++	INGENIC_DMA_REQ_I2C1_RX,
++	INGENIC_DMA_REQ_DES_TX,
++	INGENIC_DMA_REQ_DES_RX,
++};
++#endif
++
+diff --git a/arch/mips/xburst2/soc-t41/include/soc/rtc.h b/arch/mips/xburst2/soc-t41/include/soc/rtc.h
+new file mode 100644
+index 00000000..871add1f
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/include/soc/rtc.h
+@@ -0,0 +1,96 @@
++#ifndef __RTC_H__
++#define __RTC_H__
++
++/*
++ * RTC registers offset address definition
++ */
++#define RTC_RTCCR		(0x00)	/* rw, 32, 0x00000081 */
++#define RTC_RTCSR		(0x04)	/* rw, 32, 0x???????? */
++#define RTC_RTCSAR		(0x08)	/* rw, 32, 0x???????? */
++#define RTC_RTCGR		(0x0c)	/* rw, 32, 0x0??????? */
++
++#define RTC_HCR			(0x20)  /* rw, 32, 0x00000000 */
++#define RTC_HWFCR		(0x24)  /* rw, 32, 0x0000???0 */
++#define RTC_HRCR		(0x28)  /* rw, 32, 0x00000??0 */
++#define RTC_HWCR		(0x2c)  /* rw, 32, 0x00000008 */
++#define RTC_HWRSR		(0x30)  /* rw, 32, 0x00000000 */
++#define RTC_HSPR		(0x34)  /* rw, 32, 0x???????? */
++#define RTC_WENR		(0x3c)  /* rw, 32, 0x00000000 */
++#define RTC_WKUPPINCR		(0x48)	/* rw, 32, 0x00050064*/
++
++/*
++ * RTC registers common define
++ */
++
++/* RTC control register(RTCCR) */
++#define RTCCR_WRDY		BIT(7)
++#define RTCCR_1HZ		BIT(6)
++#define RTCCR_1HZIE		BIT(5)
++#define RTCCR_AF		BIT(4)
++#define RTCCR_AIE		BIT(3)
++#define RTCCR_AE		BIT(2)
++#define RTCCR_SELEXC		BIT(1)
++#define RTCCR_RTCE		BIT(0)
++
++
++/* Generate the bit field mask from msb to lsb */
++#define BITS_H2L(msb, lsb)  ((0xFFFFFFFF >> (32-((msb)-(lsb)+1))) << (lsb))
++
++/* RTC regulator register(RTCGR) */
++#define RTCGR_LOCK		BIT(31)
++#define RTCGR_ADJC_LSB		16
++#define RTCGR_ADJC_MASK		BITS_H2L(25, RTCGR_ADJC_LSB)
++#define RTCGR_NC1HZ_LSB		0
++#define RTCGR_NC1HZ_MASK	BITS_H2L(15, RTCGR_NC1HZ_LSB)
++
++/* Hibernate control register(HCR) */
++#define HCR_PD			BIT(0)
++
++/* Hibernate wakeup filter counter register(HWFCR) */
++#define HWFCR_LSB		5
++#define HWFCR_MASK		BITS_H2L(15, HWFCR_LSB)
++#define HWFCR_WAIT_TIME(ms, clk) (((ms)*(clk)/1000+0xf) > HWFCR_MASK ? HWFCR_MASK : ((ms)*(clk)/1000+0xf) & HWFCR_MASK)
++
++/* Hibernate reset counter register(HRCR) */
++#define HRCR_LSB		11
++#define HRCR_MASK		BITS_H2L(14, HRCR_LSB)
++#define HRCR_WAIT_TIME(ms, clk) (((ms)*(clk)/1000 + 0x3ff - 0x800) > HRCR_MASK ? HRCR_MASK : \
++								 ((ms)*(clk)/1000 + 0x3ff - 0x800) & HRCR_MASK)
++
++
++/* Hibernate wakeup control register(HWCR) */
++/* Power detect default value; this value means enable */
++#define EPDET_LSB		3
++#define EPDET_DEFAULT           (0x5aa5a5a << EPDET_LSB)
++#define EPDET_ENABLE		(0x5aa5a5a << EPDET_LSB)
++#define EPDET_DISABLE		(0x1a55a5a5 << EPDET_LSB)
++#define HWCR_EALM		BIT(0)
++
++
++/* Hibernate wakeup status register(HWRSR) */
++#define HWRSR_APD		BIT(8)
++#define HWRSR_HR		BIT(5)
++#define HWRSR_PPR		BIT(4)
++#define HWRSR_PIN		BIT(1)
++#define HWRSR_ALM		BIT(0)
++
++/* write enable pattern register(WENR) */
++#define WENR_WEN		BIT(31)
++#define WENR_WENPAT_LSB		0
++#define WENR_WENPAT_MASK	BITS_H2L(15, WENR_WENPAT_LSB)
++#define WENR_WENPAT_WRITABLE	(0xa55a)
++
++/* Hibernate scratch pattern register(HSPR) */
++#define HSPR_RTCV               0x52544356      /* The value is 'RTCV', means rtc is valid */
++
++/*WKUP_PIN_RST control register (WKUPPINCR)*/
++#define WKUPPINCR_BIAS_CTRL	(0x1 << 16)	/* fix value*/
++#define WKUPPINCR_OSC_EN        BIT(18)
++#define WKUPPINCR_P_JUD_LEN_LSB	4
++#define WKUPPINCR_P_JUD_LEN_MASK	BITS_H2L(7, WKUPPINCR_P_JUD_LEN_LSB)
++#define WKUPPINCR_P_JUD_LEN(s)  ((s) << WKUPPINCR_P_JUD_LEN_LSB) > WKUPPINCR_P_JUD_LEN_MASK ? \
++	WKUPPINCR_P_JUD_LEN_MASK : (s) << WKUPPINCR_P_JUD_LEN_LSB
++#define WKUPPINCR_P_JUD_EN	(0x4)
++/* The divider is decided by the RTC clock frequency. */
++#define RTC_FREQ_DIVIDER	(32768 - 1)
++#endif	/* __RTC_H__ */
+diff --git a/arch/mips/xburst2/soc-t41/include/soc/sfc.h b/arch/mips/xburst2/soc-t41/include/soc/sfc.h
+new file mode 100644
+index 00000000..5703762c
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/include/soc/sfc.h
+@@ -0,0 +1,211 @@
++#ifndef __SFC_REGISTER_H
++#define __SFC_REGISTER_H
++
++/* SFC register */
++
++#define	SFC_GLB0			    (0x0000)
++#define	SFC_DEV_CONF			(0x0004)
++#define	SFC_DEV_STA_EXP			(0x0008)
++#define	SFC_DEV0_STA_RT			(0x000c)
++#define	SFC_DEV_STA_MSK			(0x0010)
++#define	SFC_TRAN_CONF0(n)		(0x0014 + (n * 4))
++#define	SFC_TRAN_LEN			(0x002c)
++#define	SFC_DEV_ADDR(n)			(0x0030 + (n * 4))
++#define	SFC_DEV_ADDR_PLUS(n)	(0x0048 + (n * 4))
++#define	SFC_MEM_ADDR			(0x0060)
++#define	SFC_TRIG			    (0x0064)
++#define	SFC_SR				    (0x0068)
++#define	SFC_SCR				    (0x006c)
++#define	SFC_INTC			    (0x0070)
++#define	SFC_FSM				    (0x0074)
++#define	SFC_CGE				    (0x0078)
++#define SFC_CMD_IDX             (0x007c)
++#define SFC_COL_ADDR            (0x0080)
++#define SFC_ROW_ADDR            (0x0084)
++#define SFC_STA_ADDR0           (0x0088)
++#define SFC_STA_ADDR1           (0x008c)
++#define SFC_DES_ADDR            (0x0090)
++#define SFC_GLB1			    (0x0094)
++#define SFC_DEV1_STA_RT			(0x0098)
++#define	SFC_TRAN_CONF1(n)		(0x009c + (n * 4))
++#define SFC_CDT                 (0x0800)  //0x800 ~ 0xbff
++#define	SFC_RM_DR			    (0x1000)
++
++/* For SFC_GLB0 */
++#define GLB0_POLL_TIME_OFFSET		(16)
++#define GLB0_POLL_TIME_MSK		(0xffff << GLB0_POLL_TIME_OFFSET)
++#define GLB0_DES_EN			    (1 << 15)
++#define GLB0_CDT_EN			    (1 << 14)
++#define	GLB0_TRAN_DIR			(1 << 13)
++#define GLB0_TRAN_DIR_WRITE		(1)
++#define GLB0_TRAN_DIR_READ		(0)
++#define	GLB0_THRESHOLD_OFFSET	(7)
++#define GLB0_THRESHOLD_MSK		(0x3f << GLB0_THRESHOLD_OFFSET)
++#define GLB0_OP_MODE			(1 << 6)
++#define GLB0_OP_OFFSET          (6)
++#define SLAVE_MODE			    (0x0)
++#define DMA_MODE			    (0x1)
++#define GLB0_PHASE_NUM_OFFSET	(3)
++#define GLB0_PHASE_NUM_MSK		(0x7  << GLB0_PHASE_NUM_OFFSET)
++#define GLB0_WP_EN			    (1 << 2)
++#define GLB0_BURST_MD_OFFSET	(0)
++#define GLB0_BURST_MD_MSK		(0x3  << GLB0_BURST_MD_OFFSET)
++
++/* For SFC_DEV_CONF */
++#define DEV_CONF_STA_ENDIAN_OFFSET	(31)
++#define	STA_ENDIAN_LSB			    (0)
++#define	STA_ENDIAN_MSB			    (1)
++#define	DEV_CONF_SMP_DELAY_OFFSET	(16)
++#define	DEV_CONF_SMP_DELAY_MSK		(0x1f << DEV_CONF_SMP_DELAY_OFFSET)
++#define DEV_CONF_SMP_DELAY_0		(0)
++#define DEV_CONF_SMP_DELAY_45		(1)
++#define DEV_CONF_SMP_DELAY_90		(2)
++#define DEV_CONF_SMP_DELAY_135		(3)
++#define DEV_CONF_SMP_DELAY_180		(4)
++#define DEV_CONF_SMP_DELAY_225		(5)
++#define DEV_CONF_SMP_DELAY_270		(6)
++#define DEV_CONF_SMP_DELAY_315		(7)
++#define DEV_CONF_SMP_DELAY_1		(8)
++#define DEV_CONF_SMP_DELAY_2		(16)
++#define DEV_CONF_CMD_TYPE		    (0x1 << 15)
++#define DEV_CONF_STA_TYPE_OFFSET	(13)
++#define DEV_CONF_STA_TYPE_MSK		(0x3 << DEV_CONF_STA_TYPE_OFFSET)
++#define DEV_CONF_THOLD_OFFSET		(11)
++#define	DEV_CONF_THOLD_MSK		    (0x3 << DEV_CONF_THOLD_OFFSET)
++#define DEV_CONF_TSETUP_OFFSET		(9)
++#define DEV_CONF_TSETUP_MSK		    (0x3 << DEV_CONF_TSETUP_OFFSET)
++#define DEV_CONF_TSH_OFFSET		    (5)
++#define DEV_CONF_TSH_MSK		    (0xf << DEV_CONF_TSH_OFFSET)
++#define DEV_CONF_CPHA			    (0x1 << 4)
++#define DEV_CONF_CPOL			    (0x1 << 3)
++#define DEV_CONF_CEDL			    (0x1 << 2)
++#define DEV_CONF_HOLDDL			    (0x1 << 1)
++#define DEV_CONF_WPDL			    (0x1 << 0)
++
++/* For SFC_TRAN_CONF0 */
++#define TRAN_CONF0_CLK_MODE		    (29)
++#define	TRAN_CONF0_CLK_MODE_MSK		(0x7 << TRAN_CONF0_CLK_MODE)
++#define TRAN_CONF0_CLK_MODE_SSS		(0)
++#define TRAN_CONF0_CLK_MODE_SSD		(1)
++#define TRAN_CONF0_CLK_MODE_SDS		(2)
++#define TRAN_CONF0_CLK_MODE_SDD		(3)
++#define TRAN_CONF0_CLK_MODE_DSS		(4)
++#define TRAN_CONF0_CLK_MODE_DSD		(5)
++#define TRAN_CONF0_CLK_MODE_DDS		(6)
++#define TRAN_CONF0_CLK_MODE_DDD		(7)
++#define	TRAN_CONF0_ADDR_WIDTH_OFFSET	(26)
++#define	TRAN_CONF0_ADDR_WIDTH_MSK	(0x7 << TRAN_CONF0_ADDR_WIDTH_OFFSET)
++#define TRAN_CONF0_POLLEN		    (1 << 25)
++#define TRAN_CONF0_POLL_OFFSET		(25)
++#define TRAN_CONF0_CMDEN		    (1 << 24)
++#define TRAN_CONF0_FMAT			    (1 << 23)
++#define TRAN_CONF0_FMAT_OFFSET		(23)
++#define TRAN_CONF0_DMYBITS_OFFSET	(17)
++#define TRAN_CONF0_DMYBITS_MSK		(0x3f << TRAN_CONF0_DMYBITS_OFFSET)
++#define TRAN_CONF0_DATEEN		    (1 << 16)
++#define TRAN_CONF0_DATEEN_OFFSET	(16)
++#define	TRAN_CONF0_CMD_OFFSET		(0)
++#define	TRAN_CONF0_CMD_MSK		    (0xffff << TRAN_CONF0_CMD_OFFSET)
++
++/* For SFC_TRAN_CONF1 */
++#define TRAN_CONF1_DATA_ENDIAN		(1 << 18)
++#define TRAN_CONF1_DATA_ENDIAN_OFFSET	(18)
++#define TRAN_CONF1_DATA_ENDIAN_LSB	    (0)
++#define TRAN_CONF1_DATA_ENDIAN_MSB	    (1)
++#define TRAN_CONF1_WORD_UNIT_OFFSET	    (16)
++#define TRAN_CONF1_WORD_UNIT_MSK	    (3 << 16)
++#define TRAN_CONF1_TRAN_MODE_OFFSET	    (4)
++#define TRAN_CONF1_TRAN_MODE_MSK	    (0xf << TRAN_CONF1_TRAN_MODE_OFFSET)
++#define TRAN_CONF1_SPI_STANDARD		    (0x0)
++#define TRAN_CONF1_SPI_DUAL		        (0x1)
++#define TRAN_CONF1_SPI_QUAD		        (0x5)
++#define TRAN_CONF1_SPI_IO_QUAD		    (0x6)
++#define TRAN_CONF1_SPI_OCTAL		    (0x9)
++#define TRAN_CONF1_SPI_IO_OCTAL		    (0xa)
++#define TRAN_CONF1_SPI_FULL_OCTAL	    (0xb)
++
++
++/* For SFC_TRIG */
++#define TRIG_FLUSH			(1 << 2)
++#define TRIG_STOP			(1 << 1)
++#define TRIG_START			(1 << 0)
++
++/* For SFC_SR */
++#define SFC_WORKING		(1 << 7)
++#define SFC_BUSY		(0x3 << 5)
++#define	SFC_END			(1 << 4)
++#define SFC_TREQ		(1 << 3)
++#define SFC_RREQ		(1 << 2)
++#define SFC_OVER		(1 << 1)
++#define SFC_UNDER		(1 << 0)
++
++/* For SFC_SCR */
++#define	CLR_END			(1 << 4)
++#define CLR_TREQ		(1 << 3)
++#define CLR_RREQ		(1 << 2)
++#define CLR_OVER		(1 << 1)
++#define CLR_UNDER		(1 << 0)
++
++//SFC_CMD_IDX
++#define CMD_IDX_MSK                     (0x3f << 0)
++#define CDT_DATAEN_MSK                  (0x1 << 31)
++#define CDT_DATAEN_OFF                  (31)
++#define CDT_DIR_MSK                     (0x1 << 30)
++#define CDT_DIR_OFF                     (30)
++
++/* For SFC_GLB1 */
++#define GLB1_DQS_EN			    (1 << 2)
++#define GLB1_CHIP_SEL_OFFSET	(0)
++#define GLB1_CHIP_SEL_MSK		(0x3 << 0)
++#define GLB1_CHIP_SEL_0			(0)
++#define GLB1_CHIP_SEL_1			(1)
++#define GLB1_CHIP_SEL_01		(2)
++
++#define N_MAX			6
++#define MAX_SEGS		128
++
++#define CHANNEL_0		0
++#define CHANNEL_1		1
++#define CHANNEL_2		2
++#define CHANNEL_3		3
++#define CHANNEL_4		4
++#define CHANNEL_5		5
++
++#define ENABLE			1
++#define DISABLE			0
++
++#define COM_CMD			1	// common cmd
++#define POLL_CMD		2	// the cmd will poll the status of flash,ext: read status
++
++#define DMA_OPS			1
++#define CPU_OPS			0
++
++#define TM_STD_SPI		0
++#define TM_DI_DO_SPI	1
++#define TM_DIO_SPI		2
++#define TM_FULL_DIO_SPI	3
++#define TM_QI_QO_SPI	5
++#define TM_QIO_SPI		6
++#define	TM_FULL_QIO_SPI	7
++#define TM_OCTAL_SPT		9
++#define TM_OCTAL_IO_SPI		10
++#define TM_OCTAL_FULL_SPI	11
++
++
++#define DEFAULT_CDT		1
++#define UPDATE_CDT		2
++#define DEFAULT_ADDRSIZE	3
++#define DEFAULT_ADDRMODE	0
++
++
++#define THRESHOLD		32
++
++#define SFC_NOR_RATE    110
++#define DEF_ADDR_LEN    3
++#define DEF_TCHSH       6
++#define DEF_TSLCH       6
++#define DEF_TSHSL_R     20
++#define DEF_TSHSL_W     50
++
++
++#endif
+diff --git a/arch/mips/xburst2/soc-t41/include/soc/tcsm_layout.h b/arch/mips/xburst2/soc-t41/include/soc/tcsm_layout.h
+new file mode 100644
+index 00000000..2de46b7b
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/include/soc/tcsm_layout.h
+@@ -0,0 +1,53 @@
++#ifndef __TCSM_LAYOUT_H__
++#define __TCSM_LAYOUT_H__
++
++/**
++ *      |-------------|
++ *      |    BANK0    |
++ *      |-------------|     <--- SLEEP_TCSM_BOOTCODE_TEXT
++ *      | BOOT CODE   |
++ *      |-------------|     <--- SLEEP_TCSM_RESUMECODE_TEXT
++ *      |    ...      |
++ *      | RESUME CODE |
++ *      |    ...      |
++ *      |-------------|     <--- SLEEP_TCSM_RESUME_DATA
++ *      |    ...      |
++ *      | RESUME DATA |
++ *      |    ...      |
++ *      |_____________|     <--- SLEEP_TCSM_CPU_RESMUE_SP
++ *
++ *
++ *      |-------------|
++ *      |    BANK1    |
++ *      |-------------|     <--- TO BE DEFINED
++ *      |             |
++ *      |             |
++ *      |    ...      |
++ *      |  VOICE DATA |
++ *      |    ...      |
++ *      |             |
++ *      |             |
++ *      |_____________|
++ *
++ */
++
++#define SLEEP_TCSM_SPACE           0xb3422000
++#define VOICE_TCSM_DATA_BUF	   0xb3423000
++#define TCSM_BANK_LEN              4096
++
++#define SLEEP_TCSM_BOOT_TEXT       (SLEEP_TCSM_SPACE)
++#define SLEEP_TCSM_BOOT_LEN        64
++#define SLEEP_TCSM_BOOT_END        (SLEEP_TCSM_BOOT_TEXT + SLEEP_TCSM_BOOT_LEN)
++
++#define SLEEP_TCSM_RESUME_TEXT     (SLEEP_TCSM_BOOT_END)
++#define SLEEP_TCSM_RESUME_LEN      2048
++#define SLEEP_TCSM_RESUME_END      (SLEEP_TCSM_RESUME_TEXT + SLEEP_TCSM_RESUME_LEN)
++
++#define SLEEP_TCSM_RESUME_DATA     (SLEEP_TCSM_RESUME_END)
++
++#define SLEEP_TCSM_SPACE_END       (SLEEP_TCSM_SPACE + TCSM_BANK_LEN)
++
++#define SLEEP_TCSM_CPU_RESMUE_SP   SLEEP_TCSM_SPACE_END - 4
++
++
++#endif	/*  __TCSM_LAYOUT_H__ */
+diff --git a/arch/mips/xburst2/soc-t41/include/war.h b/arch/mips/xburst2/soc-t41/include/war.h
+new file mode 100644
+index 00000000..fd1ef314
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/include/war.h
+@@ -0,0 +1,27 @@
++/*
++ * This file is subject to the terms and conditions of the GNU General Public
++ * License.  See the file "COPYING" in the main directory of this archive
++ * for more details.
++ *
++ * Copyright (C) 2002, 2004, 2007 by Ralf Baechle <ralf@linux-mips.org>
++ */
++#ifndef __ASM_MACH_INGENIC_WAR_H__
++#define __ASM_MACH_INGENIC_WAR_H__
++
++#define R4600_V1_INDEX_ICACHEOP_WAR	0
++#define R4600_V1_HIT_CACHEOP_WAR	0
++#define R4600_V2_HIT_CACHEOP_WAR	0
++#define R5432_CP0_INTERRUPT_WAR		0
++#define BCM1250_M3_WAR			0
++#define SIBYTE_1956_WAR			0
++#define MIPS4K_ICACHE_REFILL_WAR	0
++#define MIPS_CACHE_SYNC_WAR		1
++#define MIPS_BRIDGE_SYNC_WAR            1
++#define TX49XX_ICACHE_INDEX_INV_WAR	0
++#define RM9000_CDEX_SMP_WAR		0
++#define ICACHE_REFILLS_WORKAROUND_WAR	0
++#define R10000_LLSC_WAR			0
++#define MIPS34K_MISSED_ITLB_WAR		0
++
++#endif
++
+diff --git a/arch/mips/xburst2/soc-t41/libdmmu.c b/arch/mips/xburst2/soc-t41/libdmmu.c
+new file mode 100644
+index 00000000..722e9d72
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/libdmmu.c
+@@ -0,0 +1,901 @@
++/*
++ * This driver is used by VPU driver.
++ *
++ * Copyright (C) 2015 Ingenic Semiconductor Co., Ltd.
++ *	http://www.ingenic.com
++ * Author:	Yan Zhengting <zhengting.yan@ingenic.com>
++ * Modify by:	Sun Jiwei <jiwei.sun@ingenic.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
++ *
++ */
++
++#include <linux/kernel.h>
++#include <linux/list.h>
++#include <linux/platform_device.h>
++#include <linux/fs.h>
++#include <linux/file.h>
++#include <linux/mm.h>
++#include <linux/list.h>
++#include <linux/mutex.h>
++#include <linux/proc_fs.h>
++#include <linux/debugfs.h>
++#include <linux/mempolicy.h>
++#include <linux/mm_types.h>
++#include <asm/io.h>
++#include <asm/uaccess.h>
++#include <asm/current.h>
++#include <asm/cacheflush.h>
++#include <asm/tlbflush.h>
++#include <asm/io.h>
++#include <linux/vmalloc.h>
++#include <linux/sched.h>
++#include <jz_proc.h>
++#include <linux/module.h>
++
++#include <libdmmu.h>
++#define print_dbg(f, arg...) printk(KERN_INFO "dpu: %s, %d: " f "\n", __func__, __LINE__, ## arg)
++
++#define MAP_COUNT		0x10
++#define MAP_CONUT_MASK		0xff0
++
++#define DMMU_PTE_VLD 		0x01
++#define DMMU_PMD_VLD 		0x01
++
++#define KSEG0_LOW_LIMIT		0x80000000
++#define KSEG1_HEIGH_LIMIT	0xC0000000
++
++enum mem_break{
++    MODE1,  /* 13 24 57 68 911 1012 ... */
++    MODE2,  /* 13 24 35 46 57 68 79 810 ... */
++    MODE3   /* 12 34 56 78 ... */
++};
++
++LIST_HEAD(handle_list);
++static unsigned long reserved_pte = 0;
++static unsigned long res_pte_paddr;
++
++struct pmd_node {
++	unsigned int count;
++	unsigned long index;
++	unsigned long page;
++	struct list_head list;
++};
++
++struct map_node {
++	struct device *dev;
++	unsigned long start;
++	unsigned long len;
++	struct list_head list;
++};
++
++struct dmmu_handle {
++	pid_t tgid;
++	unsigned long pdg;
++	struct mutex lock;
++	struct list_head list;
++	struct list_head pmd_list;
++	struct list_head map_list;
++};
++
++/* for test */
++static struct dmmu_handle *find_handle(void);
++static struct dmmu_handle *create_handle(void);
++static void dmmu_cache_wback(struct dmmu_handle *h);
++
++int dmmu_flush_cache(unsigned long vaddr, unsigned long len)
++{
++	struct list_head *pos, *next;
++	struct dmmu_handle *h = NULL;
++	struct map_node *n = NULL;
++	unsigned long *pgd, *pte_phys, *pte;
++	unsigned long virpage_phy;
++	unsigned long v_end = vaddr+len;
++	int found = 0;
++	int index;
++
++	h = find_handle();
++	if(!h){
++		printk("%s find handle err!\n",__func__);
++		return -1;
++	}
++	if (vaddr & 0xfff) {
++		printk("%s addr align page err!\n",__func__);
++		return -1;
++	}
++	list_for_each_safe(pos, next, &h->map_list) {
++		n = list_entry(pos, struct map_node, list);
++		if((vaddr >= n->start) &&
++			((vaddr+len) <= (n->start + n->len))) {
++			found = 1;
++			break;
++		}
++	}
++	if(!found) {
++		printk("%s addr err!\n",__func__);
++		return -1;
++	}
++	pgd = (unsigned long *)h->pdg;
++	while(vaddr < v_end) {
++		index = vaddr>>22;
++		pte_phys = (unsigned long *)(pgd[index] & ~DMMU_PMD_VLD);
++		pte = (unsigned long *)phys_to_virt((unsigned long)pte_phys);
++		index = ((vaddr & 0x3ff000) >> 12);
++		virpage_phy = pte[index] & ~DMMU_PTE_VLD;
++		dma_cache_wback((unsigned long)phys_to_virt(virpage_phy),PAGE_SIZE);
++		vaddr+=PAGE_SIZE;
++	}
++	return 0;
++}
++
++static int make_smash_list(struct dmmu_handle *h, unsigned long vaddr, unsigned long (**base)[2], unsigned int *len)
++{
++    unsigned long *pgd = (unsigned long *)h->pdg;
++    unsigned long (*list_smash)[2] = NULL;
++    unsigned int list_len = 0;
++    unsigned long *pte, *pte_phys;
++    unsigned int i, index;
++
++    struct list_head *pos, *next;
++	struct map_node *n;
++
++    list_for_each_safe(pos, next, &h->map_list) {
++        n = list_entry(pos, struct map_node, list);
++        if(vaddr == n->start) {
++            list_len = (n->len) >> 12;
++            break;
++        }
++    }
++
++    if (list_len) {
++        list_smash = kmalloc(list_len * 2 * 4, GFP_KERNEL);
++        if (list_smash) {
++            i = 0;
++            while(i < list_len) {
++                list_smash[i][0] = (unsigned long)(vaddr & 0xfffff000);
++
++		index = vaddr>>22;
++                pte_phys = (unsigned long *)(pgd[index] & ~DMMU_PMD_VLD);
++
++
++		pte = (unsigned long *)phys_to_virt((unsigned long)pte_phys);
++
++		index = ((vaddr & 0x3ff000) >> 12);
++//		printk(">>>>>>virt = 0x%lx, phys = 0x%lx\n", vaddr,
++//				*((unsigned long int *) (((unsigned long)pte_phys+index*4) | 0xa0000000)));
++		list_smash[i][1] = pte[index];
++
++                vaddr+=0x1000;
++		i++;
++            }
++        }
++    }
++
++    if (list_smash) {
++        *base = list_smash;
++        *len = list_len;
++        return 0;
++    } else {
++        return -1;
++    }
++}
++
++int dmmu_dump_map(unsigned long vaddr)
++{
++	struct dmmu_handle *h = NULL;
++    unsigned long (*list_smash)[2] = NULL;
++    unsigned int list_len = 0;
++    unsigned long *tmp;
++
++	h = find_handle();
++	if(!h)
++		h = create_handle();
++	if(!h)
++		return -1;
++    /* 检查4k对齐 */
++    if (vaddr & 0xfff) {
++        return -1;
++    }
++
++	mutex_lock(&h->lock);
++
++    if (make_smash_list(h, vaddr, &list_smash, &list_len)) {
++	    mutex_unlock(&h->lock);
++        return -1;
++    } else {
++        unsigned int i;
++        for (i = 0; i<list_len; i++) {
++	    tmp = (unsigned long*)((list_smash[i][1] & ~1) | 0xa0000000);
++            printk("[virt: 0x%08lx ---> phys: 0x%08lx] uncache: 0x%08lx\n",
++			    list_smash[i][0],list_smash[i][1],(unsigned long)tmp);
++
++	    printk("value[0] = 0x%08lx, value[1] = 0x%08lx value[2] = 0x%08lx value[1013] = 0x%08lx\n",
++			tmp[0], tmp[1], tmp[2], tmp[1013]);
++        }
++    }
++
++	mutex_unlock(&h->lock);
++    kfree((void*)list_smash);
++
++    return 0;
++}
++
++    /* 13 24 57 68 911 1012 ... */
++static int smash_mode1(unsigned long (*base)[2], unsigned int len)
++{
++    unsigned int i;
++    unsigned long tmp;
++    if (len >= 4) {
++        for (i=0; i<len; i += 2) {
++            tmp = base[i][1];
++            base[i][1] = base[i+1][1];
++            base[i+1][1] = tmp;
++        }
++    }
++    return 0;
++}
++
++    /* 13 24 35 46 57 68 79 810 ... */
++static int smash_mode2(unsigned long (*base)[2], unsigned int len)
++{
++    /* unsigned int i; */
++    /* unsigned long tmp; */
++    return 0;
++}
++
++    /* 12 34 56 78 ... */
++static int smash_mode3(unsigned long (*base)[2], unsigned int len)
++{
++    unsigned int i;
++    unsigned long tmp;
++if (len >= 4) {
++        for (i=0; i<len/2-1; i++) {
++            tmp = base[i][1];
++            base[i][1] = base[len-1-i][1];
++            base[len-1-i][1] = tmp;
++        }
++        for (i=0; i<len; i += 2) {
++            tmp = base[i][1];
++            base[i][1] = base[i+1][1];
++            base[i+1][1] = tmp;
++        }
++    }
++    return 0;
++}
++
++static int update_dmmu_pte(struct dmmu_handle *h, unsigned long vaddr,
++		           unsigned long (**base)[2], unsigned int len)
++{
++    unsigned long *pgd = (unsigned long *)h->pdg;
++    unsigned long *pte;
++    unsigned int i, index;
++
++    for (i=0; i<len; i++) {
++	index = vaddr>>22;
++        pte = (unsigned long *)(pgd[index] & ~DMMU_PMD_VLD);
++	pte = (unsigned long *)phys_to_virt((unsigned long)pte);
++
++	index = ((vaddr & 0x3ff000) >> 12);
++	pte[index] = (*base)[i][1];
++         vaddr+=0x1000;
++    }
++    return 0;
++}
++
++static int update_process_pte(unsigned long vaddr, unsigned long (**base)[2], unsigned int len)
++{
++    unsigned int i;
++    pgd_t *pgdir;
++    pmd_t *pmdir;
++    pte_t *pte;
++    spin_lock(&current->mm->page_table_lock);
++    for (i=0; i<len; i++) {
++        pgdir = pgd_offset(current->mm, vaddr);
++        if(pgd_none(*pgdir) || pgd_bad(*pgdir))
++            return 0;
++        pmdir = pmd_offset((pud_t *)pgdir, vaddr);
++        if(pmd_none(*pmdir) || pmd_bad(*pmdir))
++            return 0;
++        pte = pte_offset(pmdir,vaddr);
++        if (pte_present(*pte)){
++	  pte->pte = (*base)[i][1];
++	}
++        vaddr += 4096;
++    }
++    spin_unlock(&current->mm->page_table_lock);
++    return 0;
++}
++
++int dmmu_memory_smash(unsigned long vaddr, int smash_mode)
++{
++	struct dmmu_handle *h = NULL;
++    unsigned long (*list_smash)[2] = NULL;
++    unsigned int list_len = 0;
++	struct vm_area_struct * vma;
++
++	h = find_handle();
++	if(!h){
++		h = create_handle();
++	}
++	if(!h)
++		return -1;
++
++    /* 检查4k对齐 */
++    if (vaddr & 0xfff) {
++        return -1;
++    }
++
++	mutex_lock(&h->lock);
++
++    if (make_smash_list(h, vaddr, &list_smash, &list_len)) {
++	    mutex_unlock(&h->lock);
++        return -1;
++    } else {
++        switch (smash_mode) {
++            case MODE1:
++		print_dbg("smash_mode = %u\n",smash_mode);
++                smash_mode1(list_smash, list_len);
++                break;
++            case MODE2:
++		print_dbg("smash_mode = %u\n",smash_mode);
++                smash_mode2(list_smash, list_len);
++                break;
++            case MODE3:
++		print_dbg("smash_mode = %u\n",smash_mode);
++                smash_mode3(list_smash, list_len);
++                break;
++            default:
++                break;
++        }
++    }
++    update_dmmu_pte(h, vaddr, &list_smash, list_len);
++    update_process_pte(vaddr, &list_smash, list_len);
++
++	dmmu_cache_wback(h);
++	vma = find_vma(current->mm, vaddr);
++	flush_tlb_range(vma, vaddr, vaddr+(list_len*PAGE_SIZE));
++
++	mutex_unlock(&h->lock);
++    kfree(list_smash);
++
++    return 0;
++}
++
++static struct map_node *check_map(struct dmmu_handle *h,unsigned long vaddr,unsigned long len)
++{
++	struct list_head *pos, *next;
++	struct map_node *n;
++	list_for_each_safe(pos, next, &h->map_list) {
++		n = list_entry(pos, struct map_node, list);
++		if(vaddr == n->start && len == n->len)
++			return n;
++	}
++	return NULL;
++}
++
++static void handle_add_map(struct device *dev,struct dmmu_handle *h,unsigned long vaddr,unsigned long len)
++{
++	struct map_node *n = kmalloc(sizeof(*n),GFP_KERNEL);
++	n->dev = dev;
++	n->start = vaddr;
++	n->len = len;
++	INIT_LIST_HEAD(&n->list);
++	list_add(&n->list,&h->map_list);
++}
++
++static unsigned int get_pfn(unsigned int vaddr)
++{
++	pgd_t *pgdir;
++	pmd_t *pmdir;
++	pte_t *pte;
++	pgdir = pgd_offset(current->mm, vaddr);
++	if(pgd_none(*pgdir) || pgd_bad(*pgdir))
++		return 0;
++	pmdir = pmd_offset((pud_t *)pgdir, vaddr);
++	if(pmd_none(*pmdir) || pmd_bad(*pmdir))
++		return 0;
++	pte = pte_offset(pmdir,vaddr);
++	if (pte_present(*pte)) {
++		return pte_pfn(*pte) << PAGE_SHIFT;
++	}
++	return 0;
++}
++
++static unsigned long dmmu_v2pfn(unsigned long vaddr)
++{
++	if(vaddr < KSEG0_LOW_LIMIT)
++		return get_pfn(vaddr);
++
++	if(vaddr >= KSEG0_LOW_LIMIT && vaddr < KSEG1_HEIGH_LIMIT)
++		return virt_to_phys((void *)vaddr);
++
++	panic("dmmu_v2pfn error!");
++	return 0;
++}
++
++static unsigned long unmap_node(struct pmd_node *n,unsigned long vaddr,unsigned long end,int check)
++{
++	unsigned int *pte = (unsigned int *)n->page;
++	int index = ((vaddr & 0x3ff000) >> 12);
++	int free = !check || (--n->count == 0);
++	if(vaddr && end) {
++		while(index < 1024 && vaddr < end) {
++			if(pte[index] & MAP_CONUT_MASK) {
++				pte[index] -= MAP_COUNT;
++			} else {
++				ClearPageReserved(virt_to_page((void *)vaddr));
++				pte[index] = reserved_pte;
++			}
++			index++;
++			vaddr += 4096;
++		}
++	}
++
++	if(free) {
++		ClearPageReserved(virt_to_page((void *)n->page));
++		free_page(n->page);
++		list_del(&n->list);
++		kfree(n);
++		return vaddr+(1024-index)*4096;
++	}
++
++	return vaddr;
++}
++
++static unsigned long map_node(struct pmd_node *n,unsigned int vaddr,unsigned int end)
++{
++	unsigned int *pte = (unsigned int *)n->page;
++	int index = ((vaddr & 0x3ff000) >> 12);
++
++	while(index < 1024 && vaddr < end) {
++		if(pte[index] == reserved_pte) {
++			SetPageReserved(virt_to_page((void *)vaddr));
++			pte[index] = dmmu_v2pfn(vaddr) | DMMU_PTE_VLD;
++		//	printk(">>>>>vaddr = %d  pte = %x, pte[%d] = %x<<<<<<\n\n",vaddr, (unsigned int)pte, index, pte[index]);
++		} else {
++			pte[index] += MAP_COUNT;
++		}
++		index++;
++		vaddr += 4096;
++	}
++	n->count++;
++	return vaddr;
++}
++
++static struct pmd_node *find_node(struct dmmu_handle *h,unsigned int vaddr)
++{
++	struct list_head *pos, *next;
++	struct pmd_node *n;
++
++	list_for_each_safe(pos, next, &h->pmd_list) {
++		n = list_entry(pos, struct pmd_node, list);
++		if(n->index == (vaddr & 0xffc00000))
++			return n;
++	}
++	return NULL;
++}
++
++static struct pmd_node *add_node(struct dmmu_handle *h,unsigned int vaddr)
++{
++	int i;
++	unsigned long *pte;
++	unsigned long *pgd = (unsigned long *)h->pdg;
++	struct pmd_node *n = kmalloc(sizeof(*n),GFP_KERNEL);
++	INIT_LIST_HEAD(&n->list);
++	n->count = 0;
++	n->index = vaddr & 0xffc00000;
++	n->page = __get_free_page(GFP_KERNEL);
++	SetPageReserved(virt_to_page((void *)n->page));
++
++	pte = (unsigned long *)n->page;
++	for(i=0;i<1024;i++)
++		pte[i] = reserved_pte;
++
++	list_add(&n->list, &h->pmd_list);
++
++	pgd[vaddr>>22] = dmmu_v2pfn(n->page) | DMMU_PMD_VLD;
++//	printk(">>>>>>> n->page = %lx, pgd[vaddr>>22] = %lx <<<<<<<\n\n", n->page, pgd[vaddr>>22]);
++	return n;
++}
++
++static struct dmmu_handle *find_handle(void)
++{
++	struct list_head *pos, *next;
++	struct dmmu_handle *h;
++
++	list_for_each_safe(pos, next, &handle_list) {
++		h = list_entry(pos, struct dmmu_handle, list);
++		if(h->tgid == current->tgid)
++			return h;
++	}
++	return NULL;
++}
++
++static struct dmmu_handle *create_handle(void)
++{
++	struct dmmu_handle *h;
++	unsigned int pgd_index;
++	unsigned long *pgd;
++
++	h = kmalloc(sizeof(struct dmmu_handle),GFP_KERNEL);
++	if(!h)
++		return NULL;
++
++	h->tgid = current->tgid;
++	h->pdg = __get_free_page(GFP_KERNEL);
++	if(!h->pdg) {
++		pr_err("%s %d, Get free page for PGD error\n",
++				__func__, __LINE__);
++		kfree(h);
++		return NULL;
++	}
++	SetPageReserved(virt_to_page((void *)h->pdg));
++
++	pgd = (unsigned long *)h->pdg;
++
++	for (pgd_index=0; pgd_index < PTRS_PER_PGD; pgd_index++)
++		pgd[pgd_index] = res_pte_paddr;
++
++	INIT_LIST_HEAD(&h->list);
++	INIT_LIST_HEAD(&h->pmd_list);
++	INIT_LIST_HEAD(&h->map_list);
++	list_add(&h->list, &handle_list);
++
++	mutex_init(&h->lock);
++	return h;
++}
++
++static int dmmu_make_present(unsigned long addr,unsigned long end)
++{
++#if 0
++	unsigned long i;
++	for(i = addr; i < end; i += 4096) {
++		*(volatile unsigned char *)(i) = 0;
++	}
++	*(volatile unsigned char *)(end - 1) = 0;
++	return 0;
++#else
++	int ret, len, write;
++	struct vm_area_struct * vma;
++	unsigned long vm_page_prot;
++
++	vma = find_vma(current->mm, addr);
++	if (!vma) {
++		printk("dmmu_make_present error. addr=%lx len=%lx\n",addr,end-addr);
++		return -1;
++	}
++
++	if(vma->vm_flags & VM_PFNMAP)
++		return 0;
++
++	write = (vma->vm_flags & VM_WRITE) != 0;
++	BUG_ON(addr >= end);
++	BUG_ON(end > vma->vm_end);
++
++	vm_page_prot = pgprot_val(vma->vm_page_prot);
++	vma->vm_page_prot = __pgprot(vm_page_prot | _PAGE_VALID| _PAGE_ACCESSED | _PAGE_PRESENT);
++
++	len = DIV_ROUND_UP(end, PAGE_SIZE) - addr/PAGE_SIZE;
++	ret = get_user_pages(current, current->mm, addr,
++			len, write, 0, NULL, NULL);
++	vma->vm_page_prot = __pgprot(vm_page_prot);
++	if (ret < 0) {
++		printk("dmmu_make_present get_user_pages error(%d). addr=%lx len=%lx\n",0-ret,addr,end-addr);
++		return ret;
++	}
++	return ret == len ? 0 : -1;
++#endif
++}
++
++static void dmmu_cache_wback(struct dmmu_handle *h)
++{
++	struct list_head *pos, *next;
++	struct pmd_node *n;
++
++	dma_cache_wback(h->pdg,PAGE_SIZE);
++
++	list_for_each_safe(pos, next, &h->pmd_list) {
++		n = list_entry(pos, struct pmd_node, list);
++		dma_cache_wback(n->page,PAGE_SIZE);
++	}
++}
++
++static void dmmu_dump_handle(struct seq_file *m, void *v, struct dmmu_handle *h);
++
++unsigned long dmmu_map(struct device *dev,unsigned long vaddr,unsigned long len)
++{
++	int end = vaddr + len;
++	struct dmmu_handle *h;
++	struct pmd_node *node;
++
++	h = find_handle();
++	if(!h)
++		h = create_handle();
++	if(!h)
++		return 0;
++
++	mutex_lock(&h->lock);
++#ifdef DEBUG
++	printk("(pid %d)dmmu_map %lx %lx================================================\n",h->tgid,vaddr,len);
++#endif
++	if(check_map(h,vaddr,len))
++	{
++		mutex_unlock(&h->lock);
++		return dmmu_v2pfn(h->pdg);
++	}
++
++	if(dmmu_make_present(vaddr,vaddr+len))
++	{
++		mutex_unlock(&h->lock);
++		return 0;
++	}
++
++	handle_add_map(dev,h,vaddr,len);
++
++	while(vaddr < end) {
++		node = find_node(h,vaddr);
++		if(!node) {
++			node = add_node(h,vaddr);
++		}
++		vaddr = map_node(node,vaddr,end);
++	}
++	dmmu_cache_wback(h);
++#ifdef DEBUG
++	dmmu_dump_handle(NULL,NULL,h);
++#endif
++	mutex_unlock(&h->lock);
++
++	return dmmu_v2pfn(h->pdg);
++}
++
++int dmmu_unmap(struct device *dev,unsigned long vaddr, int len)
++{
++	unsigned long end = vaddr + len;
++	struct dmmu_handle *h;
++	struct pmd_node *node;
++	struct map_node *n;
++
++	h = find_handle();
++	if(!h)
++		return 0;
++
++	mutex_lock(&h->lock);
++#ifdef DEBUG
++	printk("dmmu_unmap %lx %x**********************************************\n",vaddr,len);
++#endif
++	n = check_map(h,vaddr,len);
++	if(!n) {
++		mutex_unlock(&h->lock);
++		return -EAGAIN;
++	}
++	if(n->dev != dev) {
++		mutex_unlock(&h->lock);
++		return -EAGAIN;
++	}
++
++	list_del(&n->list);
++	kfree(n);
++
++	while(vaddr < end) {
++		node = find_node(h,vaddr);
++		if(node)
++			vaddr = unmap_node(node,vaddr,end,1);
++	}
++
++	if(list_empty(&h->pmd_list) && list_empty(&h->map_list)) {
++		list_del(&h->list);
++		ClearPageReserved(virt_to_page((void *)h->pdg));
++		free_page(h->pdg);
++		mutex_unlock(&h->lock);
++		kfree(h);
++		return 0;
++	}
++
++	mutex_unlock(&h->lock);
++	return 0;
++}
++
++int dmmu_free_all(struct device *dev)
++{
++	struct dmmu_handle *h;
++	struct pmd_node *node;
++	struct map_node *cn;
++	struct list_head *pos, *next;
++
++	h = find_handle();
++	if(!h)
++		return 0;
++
++	mutex_lock(&h->lock);
++
++	list_for_each_safe(pos, next, &h->map_list) {
++		cn = list_entry(pos, struct map_node, list);
++		node = find_node(h,cn->start);
++		if(node)
++			unmap_node(node,cn->start,cn->len,1);
++		list_del(&cn->list);
++		kfree(cn);
++	}
++
++	list_for_each_safe(pos, next, &h->pmd_list) {
++		node = list_entry(pos, struct pmd_node, list);
++		if(node){
++			printk("WARN: pmd list should NULL\n");
++			unmap_node(node,0,0,0);
++		}
++	}
++
++	list_del(&h->list);
++	ClearPageReserved(virt_to_page((void *)h->pdg));
++	free_page(h->pdg);
++	kfree(h);
++
++	mutex_unlock(&h->lock);
++	return 0;
++}
++
++int dmmu_unmap_all(struct device *dev)
++{
++	struct dmmu_handle *h;
++	struct map_node *cn;
++	struct list_head *pos, *next;
++
++#ifdef DEBUG
++	printk("dmmu_unmap_all\n");
++#endif
++	h = find_handle();
++	if(!h)
++		return 0;
++
++	list_for_each_safe(pos, next, &h->map_list) {
++		cn = list_entry(pos, struct map_node, list);
++		if(dev == cn->dev)
++			dmmu_unmap(dev,cn->start,cn->len);
++	}
++
++
++	if(list_empty(&h->map_list))
++		dmmu_free_all(dev);
++	return 0;
++}
++
++int __init dmmu_init(void)
++{
++	int i;
++	unsigned int pte_index;
++	unsigned long res_page_paddr;
++	unsigned long reserved_page;
++	unsigned int *res_pte_vaddr;
++
++	reserved_page = __get_free_page(GFP_KERNEL);
++	if (!reserved_page) {
++		pr_err("%s %d, Get reserved page error\n",
++				__func__, __LINE__);
++		return ENOMEM;
++	}
++	SetPageReserved(virt_to_page((void *)reserved_page));
++	reserved_pte = dmmu_v2pfn(reserved_page) | DMMU_PTE_VLD;
++
++	res_page_paddr = virt_to_phys((void *)reserved_page) | 0xFFF;
++
++	res_pte_vaddr = (unsigned int *)__get_free_page(GFP_KERNEL);
++	if (!res_pte_vaddr) {
++		pr_err("%s %d, Get free page for PTE error\n",
++				__func__, __LINE__);
++		free_page(reserved_page);
++		return ENOMEM;
++	}
++	for(i = 0; i<1024; i++ )
++		res_pte_vaddr[i] = 0xffffffff;
++	SetPageReserved(virt_to_page(res_pte_vaddr));
++	res_pte_paddr = virt_to_phys((void *)res_pte_vaddr) | DMMU_PTE_VLD;
++
++	for (pte_index = 0; pte_index < PTRS_PER_PTE; pte_index++)
++		res_pte_vaddr[pte_index] = res_page_paddr;
++	printk("%s %d PTRS_PER_PTE = %lu\n",__func__,__LINE__,PTRS_PER_PTE);
++
++	return 0;
++}
++arch_initcall(dmmu_init);
++
++void dmmu_dump_vaddr(unsigned long vaddr)
++{
++	struct dmmu_handle *h;
++	struct pmd_node *node;
++
++	unsigned long *pmd,*pte;
++	h = find_handle();
++	if(!h) {
++		printk("dmmu_dump_vaddr %08lx error - h not found!\n",vaddr);
++		return;
++	}
++
++	node = find_node(h,vaddr);
++	if(!node) {
++		printk("dmmu_dump_vaddr %08lx error - node not found!\n",vaddr);
++		return;
++	}
++
++	pmd = (unsigned long *)h->pdg;
++	pte = (unsigned long *)node->page;
++
++	printk("pmd base = %p; pte base = %p\n",pmd,pte);
++	printk("pmd = %08lx; pte = %08lx\n",pmd[vaddr>>22],pte[(vaddr&0x3ff000)>>12]);
++}
++
++static void dmmu_dump_handle(struct seq_file *m, void *v, struct dmmu_handle *h)
++{
++	struct list_head *pos, *next;
++	struct map_node *n;
++
++	list_for_each_safe(pos, next, &h->map_list) {
++		n = list_entry(pos, struct map_node, list);
++		{
++			int i = 0;
++			int vaddr = n->start;
++			struct pmd_node *pn = find_node(h,vaddr);
++			unsigned int *pte = (unsigned int *)pn->page;
++
++			while(vaddr < (n->start + n->len)) {
++				if(i++%8 == 0)
++					printk("\nvaddr %08x : ",vaddr & 0xfffff000);
++				printk("%08x ",pte[(vaddr & 0x3ff000)>>12]);
++				vaddr += 4096;
++			}
++			printk("\n\n");
++		}
++	}
++}
++
++static int dmmu_proc_show(struct seq_file *m, void *v)
++{
++	struct list_head *pos, *next;
++	struct dmmu_handle *h;
++	volatile unsigned long flags;
++	local_irq_save(flags);
++		list_for_each_safe(pos, next, &handle_list) {
++			h = list_entry(pos, struct dmmu_handle, list);
++			dmmu_dump_handle(m, v, h);
++		}
++	local_irq_restore(flags);
++	return 0;
++}
++
++static int dmmu_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, dmmu_proc_show, PDE_DATA(inode));
++}
++
++static const struct file_operations dmmus_proc_fops ={
++	.read = seq_read,
++	.open = dmmu_open,
++	.llseek = seq_lseek,
++	.release = single_release,
++};
++
++static int __init init_dmmu_proc(void)
++{
++	struct proc_dir_entry *p;
++	p = jz_proc_mkdir("dmmu");
++	if (!p) {
++		pr_warning("create_proc_entry for common dmmu failed.\n");
++		return -ENODEV;
++	}
++	proc_create("dmmus", 0600,p,&dmmus_proc_fops);
++
++	return 0;
++}
++
++module_init(init_dmmu_proc);
+diff --git a/arch/mips/xburst2/soc-t41/pm/Makefile b/arch/mips/xburst2/soc-t41/pm/Makefile
+new file mode 100644
+index 00000000..f2baff2f
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/pm/Makefile
+@@ -0,0 +1,4 @@
++obj-y += regs_save_restore.o
++obj-y += pm_fastboot.o
++#obj-y += pm_sleep.o
++obj-y += pm.o
+diff --git a/arch/mips/xburst2/soc-t41/pm/fastboot_resume_code.hex b/arch/mips/xburst2/soc-t41/pm/fastboot_resume_code.hex
+new file mode 100644
+index 00000000..58a4c206
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/pm/fastboot_resume_code.hex
+@@ -0,0 +1,427 @@
++0x3c02b000,
++0x3c03b000,
++0x24424dfc,
++0x24634214,
++0x0040e825,
++0x00600408,
++0x00000000,
++0x03e00008,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x34038000,
++0x00801025,
++0x00831821,
++0x0043282b,
++0x14a0000e,
++0x00000000,
++0x00801025,
++0x0043282b,
++0x14a0000d,
++0x00000000,
++0x3c020002,
++0x00821021,
++0x0082182b,
++0x1460000b,
++0x00000000,
++0x3c02a000,
++0x0000000f,
++0x03e00008,
++0x8c400000,
++0xbc410000,
++0x1000ffee,
++0x24420020,
++0xbc400000,
++0x1000ffef,
++0x24420020,
++0xbc830000,
++0x1000fff1,
++0x24840040,
++0x3c031234,
++0x3c0495cb,
++0x24625678,
++0x34849988,
++0x24635a78,
++0x00442821,
++0xaca20000,
++0x8ca50000,
++0x14a20006,
++0x00000000,
++0x24420004,
++0x1443fffa,
++0x00442821,
++0x03e00008,
++0x24020001,
++0x03e00008,
++0x00001025,
++0x3c02b000,
++0x8c430000,
++0x3c04ff8f,
++0x3484ffff,
++0x00642024,
++0x3c05000f,
++0x8c434e0c,
++0x34a5ffff,
++0x00651824,
++0x00641825,
++0xac430000,
++0x8c430000,
++0x3c040070,
++0x00641825,
++0xac430000,
++0x3c03b000,
++0x8c6200d4,
++0x30420007,
++0x1440fffd,
++0x00000000,
++0x8c620000,
++0x3c0400ff,
++0x8c654e0c,
++0x3484ffff,
++0x00442024,
++0x3c02ff00,
++0x00451024,
++0x00441025,
++0xac620000,
++0x3c04b000,
++0x3c03f800,
++0x8c8200d4,
++0x00431024,
++0x1443fffd,
++0x00000000,
++0x03e00008,
++0x00000000,
++0x3c03b220,
++0x24640060,
++0x0000000f,
++0x8c800000,
++0x00000000,
++0x00000000,
++0x3c02b000,
++0x24424e00,
++0x8c450128,
++0xac650060,
++0x0000000f,
++0x8c800000,
++0x00000000,
++0x00000000,
++0x8c450120,
++0x3c048000,
++0x00852025,
++0xac640fe0,
++0x8c440124,
++0xac640fc0,
++0x8c44012c,
++0xac640120,
++0x8c440130,
++0xac640160,
++0x8c440134,
++0xac6401a0,
++0x8c44013c,
++0xac6401e0,
++0x8c440140,
++0xac640300,
++0x8c440144,
++0xac640320,
++0x8c440148,
++0xac640f00,
++0x8c44014c,
++0xac641000,
++0x8c420150,
++0x03e00008,
++0xac621004,
++0x27bdffd8,
++0xafb00010,
++0x3c10b000,
++0x8e044e04,
++0xafbf0024,
++0xafb40020,
++0xafb3001c,
++0xafb20018,
++0x0c0011c7,
++0xafb10014,
++0x3c04b000,
++0x0c001237,
++0x24844c28,
++0x3c020db7,
++0x8e034e08,
++0x24422f52,
++0x10620003,
++0x3c04b000,
++0x0c001237,
++0x24844c2c,
++0x3c03b000,
++0x8c644e10,
++0x2402fff0,
++0xac64000c,
++0x8c644e14,
++0x8c704e00,
++0x00441024,
++0x34420001,
++0xac620010,
++0x8c620010,
++0x30420008,
++0x1040fffd,
++0x2402fff0,
++0x8c644e18,
++0x00441024,
++0x34420001,
++0xac620014,
++0x3c03b000,
++0x8c620014,
++0x30420008,
++0x1040fffd,
++0x2402fff0,
++0x8c644e1c,
++0x00441024,
++0x34420001,
++0xac6200e0,
++0x3c06b000,
++0x8cc200e0,
++0x30420008,
++0x1040fffd,
++0x00000000,
++0x0c001039,
++0x00000000,
++0x8cc24e20,
++0x3c03c000,
++0x2463000f,
++0x00431024,
++0xacc2002c,
++0x8cc2002c,
++0x3c032000,
++0x00431025,
++0xacc2002c,
++0x3c04b000,
++0x3c051000,
++0x8c82002c,
++0x00451024,
++0x1440fffd,
++0x2483002c,
++0x3c02b301,
++0x24040090,
++0xac441000,
++0x2404009d,
++0xac441000,
++0x240400a0,
++0xac441008,
++0x8c644eb4,
++0x24634dd4,
++0xac441004,
++0x8c6400e4,
++0xac441034,
++0x8c6400e8,
++0xac441014,
++0x8c6400ec,
++0xac441018,
++0x8c6400f0,
++0xac44101c,
++0x8c44114c,
++0x34840008,
++0xac44114c,
++0x8c441140,
++0x8c6500f8,
++0x00852025,
++0xac441140,
++0x8c441144,
++0x8c6500f4,
++0x00852025,
++0xac441144,
++0x8c44114c,
++0x8c6500fc,
++0x00852025,
++0x34840008,
++0xac44114c,
++0x8c441148,
++0x8c630100,
++0x00831825,
++0xac431148,
++0x8c43114c,
++0x2404fff7,
++0x00641824,
++0xac43114c,
++0x8c431180,
++0x30630004,
++0x1060fffd,
++0x24030008,
++0xac432000,
++0xac402000,
++0x3c03b301,
++0x8c622004,
++0x30420001,
++0x1040fffd,
++0x3c02b34f,
++0x3c03b000,
++0x8c644e24,
++0xac440008,
++0xac4000d8,
++0x8c644e40,
++0x3c11b34f,
++0xac440040,
++0x8c644e44,
++0xac440048,
++0x8c644e48,
++0xac440050,
++0x8c644e4c,
++0xac440058,
++0x8c644e50,
++0xac440060,
++0x8c644e54,
++0xac440078,
++0x8c644e58,
++0xac440080,
++0x8c644e3c,
++0x2403fffe,
++0x00641824,
++0xac430038,
++0x24030020,
++0xac430010,
++0x8e220000,
++0x30420004,
++0x1040fffd,
++0x3c13b000,
++0x26624e00,
++0x8c440070,
++0x3c03b301,
++0xac642008,
++0x8c440074,
++0xac64200c,
++0x8c440078,
++0xac642010,
++0x8c44007c,
++0xac642014,
++0x8c440080,
++0xac642018,
++0x8c44005c,
++0xae240088,
++0x8c440060,
++0xae240090,
++0x8c440068,
++0xae2400e0,
++0xac60206c,
++0x8c440084,
++0xac64201c,
++0x8c440088,
++0xac642020,
++0x8c44008c,
++0xac642024,
++0x8c440090,
++0xac642028,
++0x8c440094,
++0xac64202c,
++0x8c440098,
++0xac642030,
++0x8c44009c,
++0xac642034,
++0x8c4400a0,
++0xac642038,
++0x8c4400a4,
++0xac64203c,
++0x8c4400a8,
++0xac642040,
++0x8c4400ac,
++0xac642044,
++0x8c4400b0,
++0xac642048,
++0x8c4400b4,
++0xac64204c,
++0x8c4400b8,
++0xac642050,
++0x8c4400bc,
++0xac642054,
++0x8c4400c0,
++0xac642058,
++0x8c4400c4,
++0xac64205c,
++0x8c4400c8,
++0xac642060,
++0x8c4200d8,
++0x26643048,
++0xac622070,
++0xae200030,
++0xae200028,
++0x0c00125e,
++0x8e320010,
++0x3c050020,
++0x00452825,
++0x0c00128a,
++0x36643048,
++0x2402ffdd,
++0x02429024,
++0xae320010,
++0x3c03b34f,
++0x8c620000,
++0x30420004,
++0x1440fffd,
++0x3c12b301,
++0x8e511008,
++0x2402fffc,
++0x02228824,
++0xae511008,
++0x0c001240,
++0x240403e8,
++0x8e421184,
++0x36220001,
++0xae421008,
++0x0c001240,
++0x240403e8,
++0x3c13b301,
++0x8e421184,
++0x24140003,
++0x241203e8,
++0x8e621184,
++0x30420003,
++0x10540004,
++0x3c02b301,
++0x2652ffff,
++0x1640002d,
++0x00000000,
++0xac511008,
++0x16400005,
++0x3c02b000,
++0x3c04b000,
++0x0c001237,
++0x24844c30,
++0x3c02b000,
++0x8c444e3c,
++0x3c03b34f,
++0x34840001,
++0xac640038,
++0x8c454ecc,
++0x3c04b301,
++0xac852064,
++0x8c454ed0,
++0x24424e00,
++0xac852068,
++0x8c450030,
++0xac650020,
++0x8c450034,
++0xac650030,
++0x8c420038,
++0xac620028,
++0x24020001,
++0xac6200d8,
++0x0c00105e,
++0xac82206c,
++0x0c00100c,
++0x3c048000,
++0x3c04b000,
++0x0c001237,
++0x24844c34,
++0x0000000f,
++0x02000408,
++0x00000000,
++0x00000000,
++0x8fbf0024,
++0x8fb40020,
++0x8fb3001c,
++0x8fb20018,
++0x8fb10014,
++0x8fb00010,
++0x03e00008,
++0x27bd0028,
++0x0c001240,
++0x24040064,
++0x1000ffca,
++0x000000
+\ No newline at end of file
+diff --git a/arch/mips/xburst2/soc-t41/pm/pm.c b/arch/mips/xburst2/soc-t41/pm/pm.c
+new file mode 100644
+index 00000000..24c986c5
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/pm/pm.c
+@@ -0,0 +1,259 @@
++#include <linux/init.h>
++#include <linux/pm.h>
++#include <linux/suspend.h>
++#include <linux/ctype.h>
++
++#include <linux/dma-mapping.h>
++#include <soc/cache.h>
++#include <soc/base.h>
++#include <asm/io.h>
++#include <soc/ddr.h>
++#include <soc/base.h>
++#include <soc/cpm.h>
++#include <linux/delay.h>
++#include <linux/slab.h>
++#include "pm.h"
++#include "pm_sleep.h"
++#include "pm_fastboot.h"
++#if defined CONFIG_KP_AXP
++#include <linux/regulator/machine.h>
++#endif
++
++
++#define SLEEP_LEVEL		(*(volatile unsigned int *)0xb0000034 & 0xf)
++#define SLEEP_LEVEL_MAGIC	((*(volatile unsigned int *)0xb0000034 >> 16) & 0xffff)
++#define SLEEP_MAGIC		(0x0915)
++
++#if 0
++#ifdef DEBUG_PM
++static void t41_pm_gate_check(void)
++{
++    unsigned int gate0 = cpm_inl(CPM_CLKGR);
++    unsigned int gate1 = cpm_inl(CPM_CLKGR1);
++    int i;
++    int x;
++
++    printk("gate0 = 0x%08x\n", gate0);
++    printk("gate1 = 0x%08x\n", gate1);
++    for (i = 0; i < 32; i++) {
++        x = (gate0 >> i) & 1;
++        if (x == 0)
++            printk("warning : bit[%d] in clk gate0 is enabled\n", i);
++    }
++    for (i = 0; i < 32; i++) {
++        x = (gate1 >> i) & 1;
++        if (x == 0)
++            printk("warning : bit[%d] in clk gate1 is enabled\n", i);
++    }
++
++}
++#endif
++#endif
++
++void load_func_to_tcsm(unsigned int tcsm_addr,unsigned int *f_addr,unsigned int size)
++{
++    unsigned int instr;
++    int offset;
++    int i;
++#ifdef DEBUG_PM
++    printk("tcsm addr = %#x %p size = %d\n",tcsm_addr,f_addr,size);
++#endif
++    for(i = 0;i < size / 4;i++) {
++        instr = f_addr[i];
++        if((instr >> 26) == 2){
++            offset = instr & 0x3ffffff;
++            offset = (offset << 2) - ((unsigned int)f_addr & 0xfffffff);
++            if(offset > 0) {
++                offset = ((unsigned int)tcsm_addr & 0xfffffff) + offset;
++                instr = (2 << 26) | (offset >> 2);
++            }
++        }
++        (*(volatile unsigned int *)(tcsm_addr + i*4)) = instr;
++    }
++
++    for(i = 0;i < size / 4;i++) {
++        instr = f_addr[i];
++        if((instr >> 26) == 2){
++            offset = instr & 0x3ffffff;
++            offset = (offset << 2) - ((unsigned int)f_addr & 0xfffffff);
++            if(offset > 0) {
++                offset = ((unsigned int)tcsm_addr & 0xfffffff) + offset;
++                instr = (2 << 26) | (offset >> 2);
++            }
++        }
++        if((*(volatile unsigned int *)(tcsm_addr + i*4)) != instr){
++            printk("copy sleep code error\n");
++            while(1);
++        }
++    }
++}
++#if 0
++static int soc_pm_idle(void)
++{
++    printk("soc pm idle \n");
++
++    load_func_to_sram();
++
++    soc_pm_idle_config();
++
++    return 0;
++}
++
++static int soc_pm_idle_pd(void)
++{
++    printk("soc pm idle pd \n");
++
++    load_func_to_sram();
++
++    soc_pm_idle_pd_config();
++
++    soc_set_reset_entry();
++
++    return 0;
++}
++
++static void soc_pm_sleep(void)
++{
++    printk("soc pm sleep \n");
++
++    load_func_to_sram();
++
++    soc_pm_sleep_config();
++
++    soc_set_reset_entry();
++}
++#endif
++static void soc_pm_fastboot(void)
++{
++    soc_pm_fastboot_config();
++
++    load_func_to_rtc_ram();
++
++    sys_save();
++
++    load_func_to_oram();
++}
++
++static void goto_sleep(unsigned int sleep_addr)
++{
++    mb();
++    save_goto(sleep_addr);
++    mb();
++}
++
++
++static unsigned long pm_suspend_start_time;
++int t41_pm_enter(suspend_state_t state)
++{
++    unsigned int sleep_addr = 0;
++    unsigned int sleep_level = 0;
++
++    sleep_param->uart_base = (UART0_IOBASE | 0xa0000000) + UART_OFF * bc_idx;
++    sleep_param->state = state;
++
++
++    printk("t41 pm enter\n");
++    soc_pm_fastboot();
++
++
++    sleep_addr = FASTBOOT_SLEEP_CODE_ADDR;
++    sleep_level = FASTBOOT;
++
++    {
++        long nj = jiffies - pm_suspend_start_time;
++        unsigned msec;
++
++        msec = jiffies_to_msecs(abs(nj));
++        pr_info("PM: %s completion time %d.%03d seconds\n", "Suspend",
++                msec / 1000, msec % 1000);
++    }
++
++    goto_sleep((unsigned int )sleep_addr);
++    if (sleep_level == FASTBOOT) {
++        soc_pm_wakeup_fastboot();
++    } else {
++        soc_pm_wakeup_idle_sleep();
++    }
++    return 0;
++}
++
++static int t41_pm_begin(suspend_state_t state)
++{
++    printk("t41 suspend begin\n");
++    pm_suspend_start_time = jiffies;
++    return 0;
++}
++
++static void t41_pm_end(void)
++{
++    printk("t41 pm end!\n");
++}
++#if defined CONFIG_KP_AXP
++static int t41_suspend_prepare(void)
++{
++    return regulator_suspend_prepare(PM_SUSPEND_MEM);
++}
++static void t41_suspend_finish(void)
++{
++    if (regulator_suspend_finish())
++        pr_err("%s: Suspend finish failed\n", __func__);
++}
++#endif
++
++static int ingenic_pm_valid(suspend_state_t state)
++{
++    switch (state) {
++    case PM_SUSPEND_ON:
++    case PM_SUSPEND_STANDBY:
++    case PM_SUSPEND_MEM:
++        return 1;
++
++    default:
++        return 0;
++    }
++}
++static const struct platform_suspend_ops t41_pm_ops = {
++    .valid		= ingenic_pm_valid,
++    .begin		= t41_pm_begin,
++    .enter		= t41_pm_enter,
++    .end		= t41_pm_end,
++#if defined CONFIG_KP_AXP
++    .prepare = t41_suspend_prepare,
++    .finish = t41_suspend_finish,
++#endif
++};
++
++
++int bc_idx = 0;
++static int __init suspend_console_setup(char *str)
++{
++
++    char buf[32];
++    char *s;
++
++    strncpy(buf, str, sizeof(buf) - 1);
++
++    for (s = buf; *s; s++)
++        if (isdigit(*s) || *s == ',')
++            break;
++
++    bc_idx = simple_strtoul(s, NULL, 10);
++
++    return 0;
++}
++
++__setup("console=", suspend_console_setup);
++
++/*
++ * Initialize suspend interface
++ */
++static int __init pm_init(void)
++{
++
++    suspend_set_ops(&t41_pm_ops);
++
++
++    return 0;
++}
++
++late_initcall(pm_init);
+diff --git a/arch/mips/xburst2/soc-t41/pm/pm.h b/arch/mips/xburst2/soc-t41/pm/pm.h
+new file mode 100644
+index 00000000..c18bb68e
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/pm/pm.h
+@@ -0,0 +1,193 @@
++#ifndef __PM_H__
++#define __PM_H__
++
++#include <soc/base.h>
++
++
++/*
++ *
++ *	|-----------------------|
++ *	|			|
++ *	|			|
++ *	|	RESUME_SP	|
++ *	|			|
++ *	|-----------------------|
++ *	|			|
++ *	|  	  PARAM		|
++ *	|			|
++ *	|-----------------------|
++ *	|			|
++ *	|			|
++ *	|	SLEEP_TEXT      |
++ *	|			|
++ *	|			|
++ *	|-----------------------|
++ *	|			|
++ *	|			|
++ *	|	RESUME_TEXT	|
++ *	|			|
++ *	|			|
++ *	|-----------------------|
++ *	|			|
++ *	|  RESUME_BOOTU_TEXTP	|
++ *	|			|
++ *	|-----------------------|     <------------ TCSM_START 0xb2400000
++ *
++ */
++#define SRAM_MEMORY_START	        0xb2400000
++#define SRAM_MEMORY_END		        0xb2407ff8
++#define RTC_MEMORY_START	        0xb0004000
++#define RTC_MEMORY_END              0xb0005000
++
++
++#define NORMAL_RESUME_SP		    (SRAM_MEMORY_END - 4)
++#define	NORMAL_RESUME_CODE1_ADDR	SRAM_MEMORY_START
++#define NORMAL_RESUME_CODE1_LEN		64
++#define	NORMAL_RESUME_CODE2_ADDR	(NORMAL_RESUME_CODE1_ADDR + NORMAL_RESUME_CODE1_LEN)
++#define NORMAL_RESUME_CODE2_LEN		(4096)
++#define NORMAL_SLEEP_CODE_ADDR		(NORMAL_RESUME_CODE2_ADDR + NORMAL_RESUME_CODE2_LEN)
++#define NORMAL_SLEEP_CODE_LEN		(3072)
++#define NORMAL_PARAM_ADDR		    (NORMAL_SLEEP_CODE_ADDR + NORMAL_SLEEP_CODE_LEN)
++#define NORMAL_PARAM_LEN		    (sizeof(struct sleep_param))
++
++
++#define FASTBOOT_RESUME_SP		    (FASTBOOT_DATA_ADDR - 4)
++#define FASTBOOT_RESUME_CODE1_LEN	64
++//RESUME code start addr
++#define FASTBOOT_RESUME_CODE1_ADDR	RTC_MEMORY_START
++//RESUME code end addr
++#define FASTBOOT_RESUME_CODE2_ADDR	(FASTBOOT_RESUME_CODE1_ADDR + FASTBOOT_RESUME_CODE1_LEN)
++//RESUME code length
++#define FASTBOOT_RESUME_CODE_LEN	0xe00//4*1024 - 512
++
++/*512 bytes*/
++#define FASTBOOT_DATA_ADDR		    (FASTBOOT_RESUME_CODE1_ADDR + FASTBOOT_RESUME_CODE_LEN)
++#define FASTBOOT_DATA_LEN		    (RTC_MEMORY_END - FASTBOOT_DATA_ADDR)
++/*
++ *Because RTC ram is not enough to put resume and suspend code, put the suspend code in the 128KB position behind ORAM.
++ * */
++#define FASTBOOT_SLEEP_CODE_ADDR	(0xb2620000)
++#define FASTBOOT_SLEEP_CODE_LEN		(4 * 1024)
++
++
++
++
++struct sleep_param {
++	suspend_state_t state;
++	unsigned int pdt;
++	unsigned int dpd;
++	unsigned int dlp;
++	unsigned int autorefresh;
++	unsigned int cpu_div;
++	unsigned int uart_base;
++	unsigned int sleep_level;
++};
++
++#define sleep_param ((struct sleep_param *)NORMAL_PARAM_ADDR)
++
++enum {
++	IDLE,
++	IDLE_PD,
++	SLEEP,
++	FASTBOOT,
++};
++
++
++
++void load_func_to_tcsm(unsigned int tcsm_addr,unsigned int *f_addr,unsigned int size);
++
++
++long long save_goto(unsigned int func);
++int restore_goto(unsigned int func);
++
++
++
++#define reg_ddr_phy(x)   (*(volatile unsigned int *)(0xb3011000 + ((x) << 2)))
++
++
++
++extern int bc_idx;
++
++
++
++/************************************************
++ *		debug interface
++ ***********************************************/
++
++//#define DEBUG_PM
++#define PRINT_DEBUG
++
++
++#define U_IOBASE	    0xb0031000
++#define UART_OFF        (0x1000)
++
++
++#define OFF_TDR         (0x00)
++#define OFF_LCR         (0x0C)
++#define OFF_LSR         (0x14)
++#define LSR_TDRQ        (1 << 5)
++#define LSR_TEMT        (1 << 6)
++
++
++#ifdef PRINT_DEBUG
++#define TCSM_PCHAR(x)                                                   \
++	*((volatile unsigned int*)(U_IOBASE+OFF_TDR)) = x;              \
++while ((*((volatile unsigned int*)(U_IOBASE + OFF_LSR)) & (LSR_TDRQ | LSR_TEMT)) != (LSR_TDRQ | LSR_TEMT));
++#else
++#define TCSM_PCHAR(x)
++#endif
++
++#define TCSM_DELAY(x)						\
++	do{							\
++	register unsigned int i = x;				\
++	while(i--)						\
++		__asm__ volatile("nop\n\t");			\
++	}while(0)
++
++static inline void serial_put_hex(unsigned int x) {
++	int i;
++	unsigned int d;
++	for(i = 7;i >= 0;i--) {
++		d = (x  >> (i * 4)) & 0xf;
++		if(d < 10) d += '0';
++		else d += 'A' - 10;
++		TCSM_PCHAR(d);
++	}
++	TCSM_PCHAR('\r');
++	TCSM_PCHAR('\n');
++}
++
++
++#define WAIT_RTC_DONE(r,c,s)\
++    do{ \
++        while(r){ \
++            c++; \
++            if(c>5000){ \
++                TCSM_PCHAR(s); \
++                TCSM_DELAY(10); \
++            } \
++        } \
++        c = 0; \
++    }while(0);
++
++static inline unsigned int  rtc_read_reg(unsigned int reg)
++{
++    int count = 0;
++    WAIT_RTC_DONE((!((*(volatile unsigned int *)0xb0003000 >> 7) & 0x1)),count,'!');
++    return *(volatile unsigned int *)reg;
++}
++
++
++static inline void rtc_write_reg(unsigned int reg, unsigned int val)
++{
++    int count = 0;
++    do{
++        WAIT_RTC_DONE((!((*(volatile unsigned int *)0xb0003000 >> 7) & 0x1)),count,'o');
++        *(volatile unsigned int *)0xb000303c = 0xa55a;
++        WAIT_RTC_DONE((!((*(volatile unsigned int *)0xb000303c >>31) & 0x1)),count,'v');
++        WAIT_RTC_DONE((!((*(volatile unsigned int *)0xb0003000 >> 7) & 0x1)),count,'e');
++        *(volatile unsigned int *)reg = val;
++        WAIT_RTC_DONE((!((*(volatile unsigned int *)0xb0003000 >> 7) & 0x1)),count,'r');
++    }while(val != rtc_read_reg(reg));
++}
++#endif/*PM*/
+diff --git a/arch/mips/xburst2/soc-t41/pm/pm_fastboot.c b/arch/mips/xburst2/soc-t41/pm/pm_fastboot.c
+new file mode 100644
+index 00000000..c112276f
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/pm/pm_fastboot.c
+@@ -0,0 +1,506 @@
++#include <linux/init.h>
++#include <linux/pm.h>
++#include <linux/suspend.h>
++#include <linux/irq.h>
++#include <linux/interrupt.h>
++#include <linux/delay.h>
++#include <linux/slab.h>
++#include <linux/dma-mapping.h>
++#include <soc/cache.h>
++#include <soc/base.h>
++#include <asm/io.h>
++#include <soc/ddr.h>
++#include <soc/base.h>
++#include <soc/cpm.h>
++#include <ccu.h>
++
++#include "pm.h"
++#include "pm_fastboot.h"
++
++static char *wakup_source[4]={"NULL","Alarm clock wake up","Input Key wake up","Alarm&Key wake up"};
++
++static int save_ddr_auto_value = 0;
++
++static int fastboot_resume_code[] = {
++#include "fastboot_resume_code.hex"
++};
++
++/* 230109010:
++ * date:230109
++ * change:1.0
++ * */
++static unsigned int zboost_version=230109010;
++
++static struct store_regs *store_regs;
++static noinline void fastboot_cpu_resume(void);
++static noinline void fastboot_cpu_sleep(void);
++static inline unsigned int ddr_read_reg(unsigned int reg);
++static inline void cpu_sync(void)
++{
++    __asm__ volatile(
++                     ".set push     \n\t"
++                     ".set mips32r2 \n\t"
++                     "sync          \n\t"
++                     "lw $0,0(%0)   \n\t"
++                     "nop           \n\t"
++                     ".set pop      \n\t"
++                     ::"r" (0xb0003000));
++
++}
++
++void dump_rtc(void)
++{
++	printk ("******************************ingenic_rtc_dump**********************\n\n");
++	printk ("ingenic_rtc_dump-----RTC_RTCCR is --%08x--\n",rtc_read_reg(0xb0003000));
++	printk ("ingenic_rtc_dump-----RTC_RTCSR is --%08x--\n",rtc_read_reg(0xb0003004));
++	printk ("ingenic_rtc_dump-----RTC_RTCSAR is --%08x--\n",rtc_read_reg(0xb0003008));
++	printk ("ingenic_rtc_dump-----RTC_RTCGR is --%08x--\n",rtc_read_reg(0xb000300c));
++	printk ("ingenic_rtc_dump-----RTC_HCR is --%08x--\n",rtc_read_reg(0xb0003020));
++	printk ("ingenic_rtc_dump-----RTC_HWFCR is --%08x--\n",rtc_read_reg(0xb0003024));
++	printk ("ingenic_rtc_dump-----RTC_HRCR is --%08x--\n",rtc_read_reg(0xb0003028));
++	printk ("ingenic_rtc_dump-----RTC_HWCR is --%08x--\n",rtc_read_reg(0xb000302c));
++	printk ("ingenic_rtc_dump-----RTC_HWRSR is --%08x--\n",rtc_read_reg(0xb0003030));
++	printk ("ingenic_rtc_dump-----RTC_HSPR is --%08x--\n",rtc_read_reg(0xb0003034));
++	printk ("ingenic_rtc_dump-----RTC_WENR is --%08x--\n",rtc_read_reg(0xb000303c));
++	printk ("ingenic_rtc_dump-----RTC_WKUPPINCR is --%08x--\n",rtc_read_reg(0xb0003048));
++	printk ("***************************ingenic_rtc_dump***************************\n");
++}
++
++
++static void rtc_ram_write_enable(void)
++{
++	unsigned int tmp;
++
++	/* write RTC RAM enable */
++	tmp = rtc_read_reg(0xb0003048);
++	tmp &= ~(1 << 23);
++	tmp &= ~(1 << 22);
++	tmp |= (1 << 21);
++	tmp |= (1 << 20);
++	rtc_write_reg(0xb0003048, tmp);
++
++}
++
++static void rtc_ram_write_disable(void)
++{
++	unsigned int tmp;
++	/*exit write RTC RAM enable */
++	tmp = rtc_read_reg(0xb0003048);
++	tmp |= (1 << 22);
++	rtc_write_reg(0xb0003048, tmp);
++
++}
++
++
++static void ost_save(struct ost_regs *ost_regs)
++{
++	ost_regs->ostccr = *(volatile unsigned int *)0xb2100000;
++	ost_regs->oster = *(volatile unsigned int *)0xb2100004;
++	ost_regs->ostcr = *(volatile unsigned int *)0xb2100008;
++	ost_regs->ostfr = *(volatile unsigned int *)0xb210000c;
++	ost_regs->ostmr = *(volatile unsigned int *)0xb2100010;
++	ost_regs->ostdfr = *(volatile unsigned int *)0xb2100014;
++	ost_regs->ostcnt = *(volatile unsigned int *)0xb2100018;
++
++	ost_regs->g_ostccr = *(volatile unsigned int *)0xb2000000;
++	ost_regs->g_oster = *(volatile unsigned int *)0xb2000004;
++	ost_regs->g_ostcr = *(volatile unsigned int *)0xb2000008;
++	ost_regs->g_ostcnth = *(volatile unsigned int *)0xb200000c;
++	ost_regs->g_ostcntl = *(volatile unsigned int *)0xb2000010;
++	ost_regs->g_ostcntb = *(volatile unsigned int *)0xb2000014;
++
++}
++
++static void ost_restore(struct ost_regs *ost_regs)
++{
++	*(volatile unsigned int *)0xb2100000 = ost_regs->ostccr;
++	*(volatile unsigned int *)0xb2100008 = ost_regs->ostcr;
++	*(volatile unsigned int *)0xb210000c = ost_regs->ostfr;
++	*(volatile unsigned int *)0xb2100010 = ost_regs->ostmr;
++	*(volatile unsigned int *)0xb2100014 = ost_regs->ostdfr;
++	*(volatile unsigned int *)0xb2100018 = ost_regs->ostcnt;
++	*(volatile unsigned int *)0xb2100004 = ost_regs->oster;
++
++	*(volatile unsigned int *)0xb2000000 = ost_regs->g_ostccr;
++	*(volatile unsigned int *)0xb2000008 = ost_regs->g_ostcr;
++	*(volatile unsigned int *)0xb2000004 = ost_regs->g_oster;
++
++}
++
++static void cpm_save(struct cpm_regs *cpm_regs)
++{
++	cpm_regs->cpsppr = *(volatile unsigned int *)0xb0000038;
++	cpm_regs->cpspr = *(volatile unsigned int *)0xb0000034;
++	cpm_regs->lcr = *(volatile unsigned int *)0xb0000004;
++	cpm_regs->clkgr0 = *(volatile unsigned int*)0xb0000020;
++	cpm_regs->clkgr1 = *(volatile unsigned int*)0xb0000028;
++	cpm_regs->mestsel = *(volatile unsigned int*)0xb00000ec;
++	cpm_regs->srbc = *(volatile unsigned int*)0xb00000c4;
++	cpm_regs->opcr = *(volatile unsigned int*)0xb0000024;
++}
++
++static void cpm_restore(struct cpm_regs *cpm_regs)
++{
++	*(volatile unsigned int *)0xb0000038 = cpm_regs->cpsppr;
++	*(volatile unsigned int *)0xb0000034 = cpm_regs->cpspr;
++	*(volatile unsigned int *)0xb0000004 = cpm_regs->lcr;
++	*(volatile unsigned int *)0xb00000ec = cpm_regs->mestsel;
++	*(volatile unsigned int *)0xb00000c4 = cpm_regs->srbc;
++	*(volatile unsigned int *)0xb0000024 = cpm_regs->opcr;
++	*(volatile unsigned int *)0xb0000020 = cpm_regs->clkgr0;
++	*(volatile unsigned int *)0xb0000028 = cpm_regs->clkgr1;
++}
++
++struct ost_regs *ost_regs;
++struct cpm_regs *cpm_regs;
++void sys_save(void)
++{
++	ost_regs = kmalloc(sizeof(struct ost_regs), GFP_KERNEL);
++	cpm_regs = kmalloc(sizeof(struct cpm_regs), GFP_KERNEL);
++	ost_save(ost_regs);
++	cpm_save(cpm_regs);
++}
++
++void sys_restore(void)
++{
++	cpm_restore(cpm_regs);
++	ost_restore(ost_regs);
++
++	kfree(ost_regs);
++	kfree(cpm_regs);
++}
++
++
++
++
++
++
++static void save_resume_pc(void)
++{
++	store_regs = (struct store_regs *)FASTBOOT_DATA_ADDR;
++	store_regs->resume_pc = (unsigned int)fastboot_cpu_resume;
++}
++
++static void save_uart_index(void)
++{
++	store_regs = (struct store_regs *)FASTBOOT_DATA_ADDR;
++	store_regs->uart_index = bc_idx;
++	store_regs->version = zboost_version;
++}
++
++static void pll_store(void)
++{
++	struct pll_resume_reg *pll_resume_reg;
++
++	store_regs = (struct store_regs *)FASTBOOT_DATA_ADDR;
++	pll_resume_reg = &store_regs->pll_resume_reg;
++
++	pll_resume_reg->cpccr = *(volatile unsigned int *)0xb0000000;
++	pll_resume_reg->cppcr = *(volatile unsigned int *)0xb000000c;
++	pll_resume_reg->cpapcr = *(volatile unsigned int *)0xb0000010;
++	pll_resume_reg->cpmpcr = *(volatile unsigned int *)0xb0000014;
++	pll_resume_reg->cpvpcr = *(volatile unsigned int *)0xb00000e0;
++	pll_resume_reg->ddrcdr = *(volatile unsigned int *)0xb000002c;
++}
++
++static void ddrc_store(void)
++{
++	struct ddrc_resume_reg *ddrc_resume_reg;
++
++	store_regs = (struct store_regs *)FASTBOOT_DATA_ADDR;
++	ddrc_resume_reg = &store_regs->ddrc_resume_reg;
++
++	ddrc_resume_reg->dcfg = *(volatile unsigned int *)0xb34f0008;
++	ddrc_resume_reg->dctrl = *(volatile unsigned int *)0xb34f0010;
++	ddrc_resume_reg->dlmr = *(volatile unsigned int *)0xb34f0018;
++	ddrc_resume_reg->ddlp = *(volatile unsigned int *)0xb34f0020;
++	ddrc_resume_reg->dasr_en = *(volatile unsigned int *)0xb34f0030;
++	ddrc_resume_reg->dasr_cnt = *(volatile unsigned int *)0xb34f0028;
++	ddrc_resume_reg->drefcnt = *(volatile unsigned int *)0xb34f0038;
++	ddrc_resume_reg->dtimming1 = *(volatile unsigned int *)0xb34f0040;
++	ddrc_resume_reg->dtimming2 = *(volatile unsigned int *)0xb34f0048;
++	ddrc_resume_reg->dtimming3 = *(volatile unsigned int *)0xb34f0050;
++	ddrc_resume_reg->dtimming4 = *(volatile unsigned int *)0xb34f0058;
++	ddrc_resume_reg->dtimming5 = *(volatile unsigned int *)0xb34f0060;
++	ddrc_resume_reg->dmmap0 = *(volatile unsigned int *)0xb34f0078;
++	ddrc_resume_reg->dmmap1 = *(volatile unsigned int *)0xb34f0080;
++
++	ddrc_resume_reg->dbwcfg = *(volatile unsigned int *)0xb34f0088;
++	ddrc_resume_reg->dbwstp = *(volatile unsigned int *)0xb34f0090;
++	ddrc_resume_reg->hregpro = *(volatile unsigned int *)0xb34f00d8;
++	ddrc_resume_reg->dbgen = *(volatile unsigned int *)0xb34f00e0;
++
++	ddrc_resume_reg->dwcfg = *(volatile unsigned int *)0xb3012000;
++	ddrc_resume_reg->dremap1 = *(volatile unsigned int *)0xb3012008;
++	ddrc_resume_reg->dremap2 = *(volatile unsigned int *)0xb301200c;
++	ddrc_resume_reg->dremap3 = *(volatile unsigned int *)0xb3012010;
++	ddrc_resume_reg->dremap4 = *(volatile unsigned int *)0xb3012014;
++	ddrc_resume_reg->dremap5 = *(volatile unsigned int *)0xb3012018;
++
++	ddrc_resume_reg->cpac = *(volatile unsigned int *)0xb301201c;
++	ddrc_resume_reg->cchc0 = *(volatile unsigned int *)0xb3012020;
++	ddrc_resume_reg->cchc1 = *(volatile unsigned int *)0xb3012024;
++	ddrc_resume_reg->cchc2 = *(volatile unsigned int *)0xb3012028;
++	ddrc_resume_reg->cchc3 = *(volatile unsigned int *)0xb301202c;
++	ddrc_resume_reg->cchc4 = *(volatile unsigned int *)0xb3012030;
++	ddrc_resume_reg->cchc5 = *(volatile unsigned int *)0xb3012034;
++	ddrc_resume_reg->cchc6 = *(volatile unsigned int *)0xb3012038;
++	ddrc_resume_reg->cchc7 = *(volatile unsigned int *)0xb301203c;
++	ddrc_resume_reg->cschc0 = *(volatile unsigned int *)0xb3012040;
++	ddrc_resume_reg->cschc1 = *(volatile unsigned int *)0xb3012044;
++	ddrc_resume_reg->cschc2 = *(volatile unsigned int *)0xb3012048;
++	ddrc_resume_reg->cschc3 = *(volatile unsigned int *)0xb301204c;
++	ddrc_resume_reg->cmonc0 = *(volatile unsigned int *)0xb3012050;
++	ddrc_resume_reg->cmonc1 = *(volatile unsigned int *)0xb3012054;
++	ddrc_resume_reg->cmonc2 = *(volatile unsigned int *)0xb3012058;
++	ddrc_resume_reg->cmonc3 = *(volatile unsigned int *)0xb301205c;
++	ddrc_resume_reg->cmonc4 = *(volatile unsigned int *)0xb3012060;
++
++	ddrc_resume_reg->ccguc0 = *(volatile unsigned int *)0xb3012064;
++	ddrc_resume_reg->ccguc1 = *(volatile unsigned int *)0xb3012068;
++
++	ddrc_resume_reg->pregpro = *(volatile unsigned int *)0xb301206c;
++	ddrc_resume_reg->bufcfg = *(volatile unsigned int *)0xb3012070;
++}
++
++static void ddr_phy_store(void)
++{
++	struct ddr_phy_resume_reg *ddr_phy_resume_reg;
++
++	store_regs = (struct store_regs *)FASTBOOT_DATA_ADDR;
++	ddr_phy_resume_reg = &store_regs->ddr_phy_resume_reg;
++
++    ddr_phy_resume_reg->mem_cfg         = *(volatile unsigned int *)0xb3011004;
++    ddr_phy_resume_reg->dq_width        = *(volatile unsigned int *)0xb3011034;
++    ddr_phy_resume_reg->cl              = *(volatile unsigned int *)0xb3011014;
++    ddr_phy_resume_reg->al              = *(volatile unsigned int *)0xb3011018;
++    ddr_phy_resume_reg->cwl             = *(volatile unsigned int *)0xb301101c;
++    ddr_phy_resume_reg->pll_fbdivh      = *(volatile unsigned int *)0xb3011144;
++    ddr_phy_resume_reg->pll_fbdivl      = *(volatile unsigned int *)0xb3011140;
++    ddr_phy_resume_reg->pll_ctrl        = *(volatile unsigned int *)0xb301114c;
++    ddr_phy_resume_reg->pll_pdiv        = *(volatile unsigned int *)0xb3011148;
++    ddr_phy_resume_reg->training_ctrl   = *(volatile unsigned int *)0xb3011008;
++    if(save_ddr_auto_value == 0){
++        ddr_phy_resume_reg->calib_delay_al  = *(volatile unsigned int *)0xb301126c;
++        ddr_phy_resume_reg->calib_bypass_al = *(volatile unsigned int *)0xb3011270;
++        ddr_phy_resume_reg->calib_delay_ah  = *(volatile unsigned int *)0xb3011274;
++        ddr_phy_resume_reg->calib_bypass_ah = *(volatile unsigned int *)0xb3011278;
++    }
++    ddr_phy_resume_reg->wl_mode1        = *(volatile unsigned int *)0xb301100c;
++    ddr_phy_resume_reg->wl_mode2        = *(volatile unsigned int *)0xb3011010;
++}
++
++
++static void ccu_save(void)
++{
++    struct ccu_regs *ccu_regs = NULL;
++	store_regs = (struct store_regs *)FASTBOOT_DATA_ADDR;
++	ccu_regs = &store_regs->cpu_resume_reg;
++
++	ccu_regs->cfcr      = *(volatile unsigned int *)0xb2200fe0;//must write bit31
++	ccu_regs->dmir      = *(volatile unsigned int *)0xb2200fc0;
++	ccu_regs->mscr      = *(volatile unsigned int *)0xb2200060;
++	ccu_regs->pimr      = *(volatile unsigned int *)0xb2200120;
++	ccu_regs->mimr      = *(volatile unsigned int *)0xb2200160;
++	ccu_regs->oimr      = *(volatile unsigned int *)0xb22001a0;
++	//ccu_regs->dipr    = *(volatile unsigned int *)0xb22001c0;//only read reg
++	ccu_regs->gdimr     = *(volatile unsigned int *)0xb22001e0;
++	ccu_regs->ldimr0    = *(volatile unsigned int *)0xb2200300;
++	ccu_regs->ldimr1    = *(volatile unsigned int *)0xb2200320;
++	ccu_regs->rer       = *(volatile unsigned int *)0xb2200f00;
++	ccu_regs->mbr0      = *(volatile unsigned int *)0xb2201000;
++	ccu_regs->mbr1      = *(volatile unsigned int *)0xb2201004;
++
++}
++
++
++
++static noinline void fastboot_cpu_resume(void)
++{
++
++
++	*(volatile unsigned int *)0xb2200f00 = 0xbfc00000; /* RESET entry = 0xbfc00000 ,reset value */
++
++	__asm__ volatile(
++		".set push	\n\t"
++		".set mips32r2	\n\t"
++		"jr.hb %0	\n\t"
++		"sync		\n\t"
++		"nop		\n\t"
++		".set pop 	\n\t"
++		:
++		: "r" (restore_goto)
++		:
++		);
++}
++
++static void rtc_ram_store(void)
++{
++	struct ddr_phy_resume_reg *ddr_phy_resume_reg;
++
++	store_regs = (struct store_regs *)FASTBOOT_DATA_ADDR;
++	ddr_phy_resume_reg = &store_regs->ddr_phy_resume_reg;
++
++	pll_store();
++	ddrc_store();
++	ddr_phy_store();
++    ccu_save();
++	save_resume_pc();
++	save_uart_index();
++}
++
++void load_func_to_rtc_ram(void)
++{
++   	rtc_ram_write_enable();
++
++#ifdef DEBUG_PM
++    printk("sleep addr  :%#x -- len :%#x -- end :%#x\n \
++            data addr   :%#x -- len :%#x -- end :%#x -- actual:%d bytes\n \
++            resume addr :%#x -- len :%#x -- end :%#x -- actual:%d bytes\n",
++            FASTBOOT_SLEEP_CODE_ADDR, FASTBOOT_SLEEP_CODE_LEN, FASTBOOT_SLEEP_CODE_ADDR + FASTBOOT_SLEEP_CODE_LEN,
++            FASTBOOT_DATA_ADDR, FASTBOOT_DATA_LEN, FASTBOOT_DATA_ADDR+FASTBOOT_DATA_LEN, sizeof(struct store_regs),
++            FASTBOOT_RESUME_CODE1_ADDR, FASTBOOT_RESUME_CODE_LEN, FASTBOOT_RESUME_CODE1_ADDR + FASTBOOT_RESUME_CODE_LEN ,sizeof(fastboot_resume_code)
++            );
++#endif
++    if(save_ddr_auto_value == 0){
++        memset((unsigned int *)RTC_MEMORY_START, 0xff, 4096);
++    }
++	memcpy((unsigned int *)FASTBOOT_RESUME_CODE1_ADDR, (unsigned int *)fastboot_resume_code, sizeof(fastboot_resume_code));
++
++	rtc_ram_store();
++	rtc_ram_write_disable();
++    save_ddr_auto_value = 1;
++
++#ifdef DEBUG_PM
++    dump_rtc();
++#endif
++}
++
++void load_func_to_oram(void)
++{
++	load_func_to_tcsm(FASTBOOT_SLEEP_CODE_ADDR, (unsigned int *)fastboot_cpu_sleep, FASTBOOT_SLEEP_CODE_LEN);
++}
++
++static inline unsigned int ddr_read_reg(unsigned int reg)
++{
++    return ddr_readl(reg);
++}
++static inline void ddr_write_reg(unsigned int reg,unsigned int val)
++{
++    do{
++        ddr_writel(val,reg);
++    }while(val != ddr_read_reg(reg));
++}
++
++static noinline void fastboot_cpu_sleep(void)
++{
++    unsigned int ddrc_ctrl = 0,tmp;
++
++	blast_dcache32();
++	blast_scache64();
++	__sync();
++	__fast_iob();
++    /*enter self refresh status,disabled auto self refresh*/
++    ddr_write_reg(DDRC_HREGPRO,0);
++    ddr_write_reg(DDRC_AUTOSR_EN,0);//disenable auto self-refresh
++
++    tmp = *(volatile unsigned int*)(0xa0000000);//touch
++
++    ddrc_ctrl = ddr_read_reg(DDRC_CTRL);
++    ddrc_ctrl |= 0x1<<5;//If set HIGH, hardware drives DRAM device entering self-refresh mode;
++    ddr_write_reg(DDRC_CTRL,ddrc_ctrl);
++    while(!(ddr_read_reg(DDRC_STATUS) & (1<<2)));//If set, DDR memory is in self refresh status.
++
++
++    for (tmp = 0; tmp < 2; tmp++)
++    {
++        __asm__ volatile("nop\t\n");
++        __asm__ volatile("nop\t\n");
++    }
++    /* bufferen_core = 0 */
++    tmp = rtc_read_reg(0xb0003048);
++    tmp &= ~(1 << 21);
++    rtc_write_reg(0xb0003048, tmp);
++
++    /* dfi_init_start = 1 */
++    *(volatile unsigned int *)0xb3012000 |= (1 << 3);
++    /*delay nop*/
++    for (tmp = 0; tmp < 10; tmp++)
++    {
++        __asm__ volatile("nop\t\n");
++        __asm__ volatile("nop\t\n");
++    }
++    /* ddr phy pll power down */
++    tmp = ddr_read_reg(DDRP_INNOPHY_PLL_CTRL);
++    tmp |= (1<<3);//CMD and DQ PLL power down. Set to “0” to enable the PLL.
++    ddr_write_reg(DDRP_INNOPHY_PLL_CTRL,tmp);
++    /*printf notice*/
++    TCSM_PCHAR('*');//only test
++    /* RTC PD */
++    rtc_write_reg(0xb0003020, 1);
++    while (1);
++}
++
++void soc_pm_fastboot_config(void)
++{
++	volatile unsigned int tmp;
++	unsigned int intc1_msk;
++	unsigned int clk_gate0;
++	clk_gate0 = cpm_inl(CPM_CLKGR);
++
++	clk_gate0 &= ~(1 << 29); //enable rtc gate
++	cpm_outl(clk_gate0, CPM_CLKGR);
++
++	intc1_msk = *(volatile unsigned int *)0xb000102c;
++	*(volatile unsigned int *)0xb000102c = intc1_msk & ~(3<<0); // RTC INT MSK
++
++#if 0
++	/*disabled RTC Alarm wakeup*/
++    tmp = rtc_read_reg(0xb000302c);
++	tmp &= ~(1);
++	rtc_write_reg(0xb000302c, tmp);
++
++    /*clean Alarm enable and Alarm flag*/
++    tmp = rtc_read_reg(0xb0003000);
++    tmp &=~(0x7F);
++    rtc_write_reg(0xb0003000,tmp);
++#endif
++    /*clear RTC HWRSR. clean all flag*/
++    rtc_write_reg(0xb0003030, 0);
++
++    /*clear RSR status*/
++    *(volatile u32*)(0xb0000008) = 0;
++
++    /*clean WKUPPINCR.P_RST_EN*/
++    tmp = rtc_read_reg(0xb0003048);
++    tmp &=~(0xf);
++    rtc_write_reg(0xb0003048,tmp);
++
++    /*clean HWFCR*/
++    //rtc_write_reg(0xb0003028, 0x0);
++
++    /*clean HRCR*/
++    rtc_write_reg(0xb0003024, 0);
++
++	/* 32k rtc clk */
++	tmp = rtc_read_reg(0xb0003000);
++	tmp &= ~(1 << 1);
++	rtc_write_reg(0xb0003000, tmp);
++
++}
++
++static int soc_pm_wakeup_source(void)
++{
++    int tmp  = rtc_read_reg(0xb0003030);
++    tmp &= 0x3;
++    printk("Zboost:%s\n",wakup_source[tmp]);
++	return 0;
++}
++
++void soc_pm_wakeup_fastboot(void)
++{
++    cpu_sync();
++	soc_pm_wakeup_source();
++	sys_restore();
++    cpu_sync();
++}
+diff --git a/arch/mips/xburst2/soc-t41/pm/pm_fastboot.h b/arch/mips/xburst2/soc-t41/pm/pm_fastboot.h
+new file mode 100644
+index 00000000..36920363
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/pm/pm_fastboot.h
+@@ -0,0 +1,179 @@
++#ifndef __PM_FASTBOOT_H__
++#define __PM_FASTBOOT_H__
++
++struct pll_resume_reg {
++	unsigned int cpccr;
++	unsigned int cppcr;
++	unsigned int cpapcr;
++	unsigned int cpmpcr;
++	unsigned int cpvpcr;
++	unsigned int ddrcdr;
++};
++
++struct ddrc_resume_reg {
++	unsigned int dcfg;
++	unsigned int dctrl;
++	unsigned int dlmr;
++	unsigned int ddlp;
++	unsigned int dasr_en;
++	unsigned int dasr_cnt;
++	unsigned int drefcnt;
++	unsigned int dtimming1;
++	unsigned int dtimming2;
++	unsigned int dtimming3;
++	unsigned int dtimming4;
++	unsigned int dtimming5;
++	unsigned int dmmap0;
++	unsigned int dmmap1;
++	unsigned int dbwcfg;
++	unsigned int dbwstp;
++	unsigned int hregpro;
++	unsigned int dbgen;
++	unsigned int dwcfg;
++	unsigned int dremap1;
++	unsigned int dremap2;
++	unsigned int dremap3;
++	unsigned int dremap4;
++	unsigned int dremap5;
++	unsigned int cpac;
++	unsigned int cchc0;
++	unsigned int cchc1;
++	unsigned int cchc2;
++	unsigned int cchc3;
++	unsigned int cchc4;
++	unsigned int cchc5;
++	unsigned int cchc6;
++	unsigned int cchc7;
++	unsigned int cschc0;
++	unsigned int cschc1;
++	unsigned int cschc2;
++	unsigned int cschc3;
++	unsigned int cmonc0;
++	unsigned int cmonc1;
++	unsigned int cmonc2;
++	unsigned int cmonc3;
++	unsigned int cmonc4;
++	unsigned int ccguc0;
++	unsigned int ccguc1;
++	unsigned int pregpro;
++	unsigned int bufcfg;
++};
++
++struct ddr_phy_resume_reg {
++	unsigned int phy_rst;
++	unsigned int mem_cfg;
++	unsigned int dq_width;
++	unsigned int cl;
++	unsigned int al;
++	unsigned int cwl;
++	unsigned int pll_fbdivh;
++	unsigned int pll_fbdivl;
++	unsigned int pll_ctrl;
++	unsigned int pll_pdiv;
++	unsigned int training_ctrl;
++	unsigned int calib_delay_al;
++	unsigned int calib_delay_ah;
++	unsigned int calib_bypass_al;
++	unsigned int calib_bypass_ah;
++	unsigned int wl_mode1;
++	unsigned int wl_mode2;
++
++};
++
++
++struct ccu_regs {
++	unsigned int cfcr;
++	unsigned int dmir;
++	unsigned int mscr;
++	unsigned int pimr;
++	unsigned int mimr;
++	unsigned int oimr;
++	unsigned int dipr;
++	unsigned int gdimr;
++	unsigned int ldimr0;
++	unsigned int ldimr1;
++	unsigned int rer;
++	unsigned int mbr0;
++	unsigned int mbr1;
++};
++
++
++
++struct store_regs {
++	unsigned int resume_pc;
++	unsigned int uart_index;
++	unsigned int version;
++	struct pll_resume_reg pll_resume_reg;
++	struct ddrc_resume_reg ddrc_resume_reg;
++	struct ddr_phy_resume_reg ddr_phy_resume_reg;
++    struct ccu_regs cpu_resume_reg;
++    char user[64];
++};
++
++
++
++struct uart_regs {
++	unsigned int udllr;
++	unsigned int udlhr;
++	unsigned int uthr;
++	unsigned int uier;
++	unsigned int ufcr;
++	unsigned int ulcr;
++	unsigned int umcr;
++	unsigned int uspr;
++	unsigned int isr;
++	unsigned int umr;
++	unsigned int uacr;
++	unsigned int urcr;
++	unsigned int utcr;
++
++};
++
++
++struct ost_regs {
++	unsigned int ostccr;
++	unsigned int oster;
++	unsigned int ostcr;
++	unsigned int ostfr;
++	unsigned int ostmr;
++	unsigned int ostdfr;
++	unsigned int ostcnt;
++
++	unsigned int g_ostccr;
++	unsigned int g_oster;
++	unsigned int g_ostcr;
++	unsigned int g_ostcnth;
++	unsigned int g_ostcntl;
++	unsigned int g_ostcntb;
++};
++
++struct cpm_regs {
++	unsigned int cpm_sftint;
++	unsigned int cpsppr;
++	unsigned int cpspr;
++	unsigned int lcr;
++	unsigned int pswc0st;
++	unsigned int pswc1st;
++	unsigned int pswc2st;
++	unsigned int pswc3st;
++	unsigned int clkgr0;
++	unsigned int clkgr1;
++	unsigned int mestsel;
++	unsigned int srbc;
++	unsigned int exclk_ds;
++	unsigned int memory_pd0;
++	unsigned int memory_pd1;
++	unsigned int slbc;
++	unsigned int slpc;
++	unsigned int opcr;
++	unsigned int rsr;
++};
++
++void load_func_to_rtc_ram(void);
++void soc_pm_fastboot_config(void);
++void soc_pm_wakeup_fastboot(void);
++void load_func_to_oram(void);
++void sys_save(void);
++void sys_restore(void);
++
++#endif
+diff --git a/arch/mips/xburst2/soc-t41/pm/pm_interface.c b/arch/mips/xburst2/soc-t41/pm/pm_interface.c
+new file mode 100644
+index 00000000..1ba0ca2f
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/pm/pm_interface.c
+@@ -0,0 +1,296 @@
++#include <linux/init.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/firmware.h>
++#include <linux/slab.h>		/* kmalloc() */
++#include <linux/device.h>
++#include <linux/miscdevice.h>
++#include <linux/sched.h>
++#include <linux/delay.h>
++#include <linux/dma-mapping.h>
++#include <linux/dma-direction.h>
++#include <linux/platform_device.h>
++#include <linux/pm.h>
++#include <linux/suspend.h>
++#include <linux/ctype.h>
++#include <linux/notifier.h>
++#include <linux/reboot.h>
++#include <linux/clk.h>
++#include "pm_interface.h"
++
++
++
++struct firmware_interface{
++	struct device *dev;
++	unsigned int *text;
++	int fm_size;
++	int space_size;
++	struct pm_param *param;
++};
++struct firmware_interface *fw_data;
++
++static struct firmware_interface fw_interface;
++
++static int x2000_pm_valid(suspend_state_t state)
++{
++	unsigned long flags;
++	int ret;
++	printk("x2000_pm_valid\n");
++
++	local_irq_save(flags);
++	printk("enter pm_valid\n");
++	ret = fw_data->param->valid((int)fw_data->param);
++	printk("exit pm_valid\n");
++	local_irq_restore(flags);
++	return ret;
++}
++
++static int x2000_pm_begin(suspend_state_t state)
++{
++	unsigned long flags;
++	printk("x2000_pm_begin\n");
++
++	local_irq_save(flags);
++	fw_data->param->begin((int)fw_data->param);
++	local_irq_restore(flags);
++	return 0;
++}
++
++static int x2000_pm_prepare(void)
++{
++	unsigned long flags;
++	printk("x2000_pm_prepare\n");
++
++	local_irq_save(flags);
++	fw_data->param->prepare((int)fw_data->param);
++	local_irq_restore(flags);
++	return 0;
++}
++
++static int x2000_pm_enter(suspend_state_t state)
++{
++	unsigned long flags;
++	printk("x2000_pm_enter\n");
++
++	local_irq_save(flags);
++	fw_data->param->state = state;
++	fw_data->param->enter((int)fw_data->param);
++	local_irq_restore(flags);
++	return 0;
++}
++
++static void x2000_pm_finish(void)
++{
++	unsigned long flags;
++	printk("x2000_pm_finish\n");
++
++	local_irq_save(flags);
++	fw_data->param->finish((int)fw_data->param);
++	local_irq_restore(flags);
++}
++
++static void x2000_pm_end(void)
++{
++	unsigned long flags;
++	printk("x2000_pm_end!\n");
++
++	local_irq_save(flags);
++	fw_data->param->end((int)fw_data->param);
++	local_irq_restore(flags);
++}
++
++
++static const struct platform_suspend_ops x2000_pm_ops = {
++	.valid		= x2000_pm_valid,
++	.begin		= x2000_pm_begin,
++	.prepare	= x2000_pm_prepare,
++	.enter		= x2000_pm_enter,
++	.finish		= x2000_pm_finish,
++	.end		= x2000_pm_end,
++};
++
++
++static int pm_firmware_probe(struct platform_device *pdev)
++{
++	struct device_node *np;
++	const struct firmware *firmware;
++	char *fw_name;
++	char mcu_uart_name[32];
++	struct clk *mcu_uart_clk;
++	struct pinctrl_state *state = NULL;
++	struct pinctrl *p = NULL;
++	int ret;
++
++	PMTEXTENTRY entry;
++	printk("pm_firmware_probe %d\n",pdev->num_resources);
++
++	np = pdev->dev.of_node;
++	if (!np)
++		return -ENODEV;
++
++	fw_data = &fw_interface;
++	fw_data->dev = &pdev->dev;
++
++	fw_data->text = (unsigned int *)FIRMWARE_ADDR;
++	fw_data->space_size = FIRMWARE_SPACE;
++	fw_name = FIRMWARE_NAME;
++
++
++	ret = request_firmware(&firmware, fw_name, &pdev->dev);
++	if (ret < 0) {
++		pr_err("Error: %s request_firmware().\n",fw_name);
++		goto err;
++	}
++	if(fw_data->space_size < firmware->size)
++	{
++		pr_err("Error: space[%d] too small.firmware size:%d\n",fw_data->space_size,firmware->size);
++		goto err;
++	}
++	memcpy(fw_data->text, firmware->data, firmware->size);
++//	dma_cache_sync(fw_data->dev, fw_data->text, firmware->size, DMA_TO_DEVICE);
++
++	printk("firmware text: %p\n",fw_data->text);
++	printk("firmware size: %d\n",firmware->size);
++	fw_data->fm_size = firmware->size;
++
++	entry = (PMTEXTENTRY)fw_data->text;
++	release_firmware(firmware);
++	printk("** run firmware **\n");
++	fw_data->param = kmalloc(sizeof(struct pm_param), GFP_KERNEL);
++	entry((void*)entry,&fw_data->param);
++
++	printk("fw_data->param = %p\n",fw_data->param);
++
++
++	fw_data->param->load_addr = (unsigned int)fw_data->text;
++	fw_data->param->load_space = fw_data->space_size;
++	fw_data->param->reload_pc = (unsigned int)kmalloc(fw_data->space_size, GFP_KERNEL);
++	printk("reload_pc : 0x%x\n", fw_data->param->reload_pc);
++	printk("load_addr : 0x%x\n", fw_data->param->load_addr);
++	printk("load_space : 0x%x\n", fw_data->param->load_space);
++
++
++	ret = of_property_read_u32(np, "console_idx", &(fw_data->param->uart_index));
++	if (ret < 0) {
++		printk("cannot get <console_idx>\n");
++		goto err;
++	}
++	ret = of_property_read_u32(np, "mcu_uart_idx", &(fw_data->param->mcu_uart_idx));
++	if (ret < 0) {
++		printk("cannot get <mcu_uart_idx>\n");
++		goto err;
++	}
++	ret = of_property_read_u32(np, "mcu_uart_baud", &(fw_data->param->mcu_uart_baud));
++	if (ret < 0) {
++		printk("cannot get <mcu_uart_baud>\n");
++		goto err;
++	}
++	printk("uart_idx = %d\n", fw_data->param->uart_index);
++	printk("mcu_uart_idx = %d\n", fw_data->param->mcu_uart_idx);
++	printk("mcu_uart_baud = %d\n", fw_data->param->mcu_uart_baud);
++
++
++	sprintf(mcu_uart_name, "gate_uart%d", fw_data->param->mcu_uart_idx);
++	mcu_uart_clk = clk_get(NULL, mcu_uart_name);
++	if (!mcu_uart_clk) {
++		printk("cannot get %s ", mcu_uart_name);
++		return -1;
++	}
++	clk_prepare_enable(mcu_uart_clk);
++
++
++	p = pinctrl_get(fw_data->dev);
++	if (IS_ERR_OR_NULL(p)) {
++		printk("cannot get pinctrl\n");
++	}
++	sprintf(mcu_uart_name, "mcu_uart%d", fw_data->param->mcu_uart_idx);
++	state = pinctrl_lookup_state(p, mcu_uart_name);
++	if (!IS_ERR_OR_NULL(state)) {
++		pinctrl_select_state(p, state);
++	}
++
++
++	printk("%s %d\n",__FILE__,__LINE__);
++
++	return 0;
++err:
++	of_node_put(np);
++	pr_err("pm_firmware_probe error!\n");
++	return ret;
++}
++
++static int pm_firmware_remove(struct platform_device *pdev)
++{
++	kfree((unsigned int *)fw_data->param->reload_pc);
++	return 0;
++}
++
++static const struct of_device_id ingenic_pm_match[] = {
++	{.compatible = "ingenic,x2000-v12-pm",},
++	{},
++};
++
++MODULE_DEVICE_TABLE(of, ingenic_pm_match);
++
++
++
++static struct platform_driver x2000_pm_driver = {
++	.driver = {
++	      .name		= "x2000_v12_pm",
++	      .owner		= THIS_MODULE,
++	      .of_match_table	= ingenic_pm_match,
++	},
++
++	.probe		= pm_firmware_probe,
++	.remove		= pm_firmware_remove,
++};
++
++
++
++static int x2000_pm_poweroff(void)
++{
++	unsigned long flags;
++	printk("x2000_pm_poweroff\n");
++
++	local_irq_save(flags);
++	fw_data->param->poweroff((int)fw_data->param);
++	local_irq_restore(flags);
++	return 0;
++}
++
++
++static int x2000_poweroff_notifier_callback(struct notifier_block *nb, unsigned long action, void *data)
++{
++	if (action == SYS_POWER_OFF) {
++		x2000_pm_poweroff();
++	}
++
++	return NOTIFY_DONE;
++}
++
++static struct notifier_block x2000_poweroff_notifier = {
++	.notifier_call = x2000_poweroff_notifier_callback,
++};
++
++static int __init pm_init(void)
++{
++	platform_driver_register(&x2000_pm_driver);
++
++	suspend_set_ops(&x2000_pm_ops);
++
++	register_reboot_notifier(&x2000_poweroff_notifier);
++
++	return 0;
++}
++
++static void __exit pm_exit(void)
++{
++	unregister_reboot_notifier(&x2000_poweroff_notifier);
++	platform_driver_unregister(&x2000_pm_driver);
++}
++
++module_init(pm_init);
++module_exit(pm_exit);
++
++
++MODULE_LICENSE("GPL");
+diff --git a/arch/mips/xburst2/soc-t41/pm/pm_interface.h b/arch/mips/xburst2/soc-t41/pm/pm_interface.h
+new file mode 100644
+index 00000000..7aa38a0c
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/pm/pm_interface.h
+@@ -0,0 +1,36 @@
++#ifndef INTERFACE_H
++#define INTERFACE_H
++
++
++
++#define FIRMWARE_NAME	"pm_firmware.bin"
++#define FIRMWARE_ADDR	0xb2400000
++#define FIRMWARE_SPACE	32768
++
++
++typedef int (*FUNC)(int args);
++struct pm_param
++{
++	FUNC valid;
++	FUNC begin;
++	FUNC prepare;
++	FUNC enter;
++	FUNC finish;
++	FUNC end;
++	FUNC poweroff;
++
++	int uart_index;
++	int mcu_uart_idx;
++	int mcu_uart_baud;
++	suspend_state_t state;
++
++	unsigned int resume_pc;
++	unsigned int reload_pc;
++
++	unsigned int load_addr;
++	unsigned int load_space;
++
++};
++typedef void (*PMTEXTENTRY)(void* entry,struct pm_param **p);
++
++#endif /* INTERFACE_H */
+diff --git a/arch/mips/xburst2/soc-t41/pm/pm_sleep.c b/arch/mips/xburst2/soc-t41/pm/pm_sleep.c
+new file mode 100644
+index 00000000..ca7cbbfa
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/pm/pm_sleep.c
+@@ -0,0 +1,357 @@
++#include <linux/init.h>
++#include <linux/pm.h>
++#include <linux/suspend.h>
++
++#include <soc/cache.h>
++#include <soc/base.h>
++#include <asm/io.h>
++#include <soc/ddr.h>
++#include <soc/base.h>
++#include <soc/cpm.h>
++#include "pm.h"
++#include "pm_sleep.h"
++
++
++
++static inline void ddrp_auto_calibration(void)
++{
++	unsigned int reg_val = ddr_readl(DDRP_INNOPHY_TRAINING_CTRL);
++	unsigned int timeout = 0xffffff;
++	unsigned int wait_cal_done = DDRP_CALIB_DONE_HDQCFA | DDRP_CALIB_DONE_LDQCFA;
++
++	reg_val &= ~(DDRP_TRAINING_CTRL_DSCSE_BP);
++	reg_val |= DDRP_TRAINING_CTRL_DSACE_START;
++	ddr_writel(reg_val, DDRP_INNOPHY_TRAINING_CTRL);
++
++	while(!((ddr_readl(DDRP_INNOPHY_CALIB_DONE) & wait_cal_done) == wait_cal_done) && --timeout) {
++		TCSM_PCHAR('t');
++	}
++
++	if(!timeout) {
++		TCSM_PCHAR('f');
++	}
++	ddr_writel(0, DDRP_INNOPHY_TRAINING_CTRL);
++}
++
++int soc_pm_idle_config(void)
++{
++	unsigned int lcr = cpm_inl(CPM_LCR);
++	unsigned int opcr = cpm_inl(CPM_OPCR);
++
++	lcr &=~ 0x3; // low power mode: IDLE
++	cpm_outl(lcr, CPM_LCR);
++
++	opcr &= ~(1 << 30);
++	opcr &= ~(1 << 31);
++	cpm_outl(opcr, CPM_OPCR);
++
++	return 0;
++}
++
++int soc_pm_idle_pd_config(void)
++{
++	unsigned int lcr = cpm_inl(CPM_LCR);
++	unsigned int opcr = cpm_inl(CPM_OPCR);
++
++	lcr &=~ 0x3; // low power mode: IDLE
++	lcr |= 2;
++	cpm_outl(lcr, CPM_LCR);
++
++	opcr &= ~ (1<<31);
++	opcr |= (1 << 30);
++	opcr &= ~(1 << 26);	//l2c power down
++	opcr |= 1 << 2; // select RTC clk
++	cpm_outl(opcr, CPM_OPCR);
++
++	return 0;
++}
++
++int soc_pm_sleep_config(void)
++{
++	unsigned int lcr = cpm_inl(CPM_LCR);
++	unsigned int opcr = cpm_inl(CPM_OPCR);
++
++	lcr &=~ 0x3;
++	lcr |= 1 << 0; // low power mode: SLEEP
++	cpm_outl(lcr, CPM_LCR);
++
++	opcr &= ~(1 << 31);
++	opcr |= (1 << 30);
++	opcr &= ~(1 << 26); //L2C power down
++	opcr |= (1 << 21); // cpu 32k ram retention.
++	opcr |= (1 << 3); // power down CPU
++	opcr &= ~(1 << 4); // exclk disable;
++	opcr |= (1 << 2); // select RTC clk
++	opcr |= (1 << 22);
++	opcr |= (1 << 20);
++	cpm_outl(opcr, CPM_OPCR);
++
++	return 0;
++}
++
++int soc_pm_wakeup_idle_sleep(void)
++{
++	unsigned int lcr = cpm_inl(CPM_LCR);
++	lcr &= ~0x3; // low power mode: IDLE
++	cpm_outl(lcr, CPM_LCR);
++
++	printk("post wakeup!\n");
++
++
++	{
++		/* after power down cpu by set PD in OPCR, resume cpu's frequency and L2C's freq */
++		unsigned int val;
++
++		/* change disable */
++		val = cpm_inl(CPM_CPCCR);
++		val &= ~(1 << 22);
++		cpm_outl(val, CPM_CPCCR);
++
++		/* resume cpu_div in CPCCR */
++		val &= ~0xf;
++		val |= sleep_param->cpu_div;
++		cpm_outl(val, CPM_CPCCR);
++
++		/* change enable */
++		val |= (1 << 22);
++		cpm_outl(val, CPM_CPCCR);
++
++		while (cpm_inl(CPM_CPCSR) & 1);
++	}
++	return 0;
++}
++
++void soc_set_reset_entry(void)
++{
++	*(volatile unsigned int *)0xb2200f00 = NORMAL_RESUME_CODE1_ADDR;
++
++}
++
++
++static noinline void cpu_resume_bootup(void)
++{
++	TCSM_PCHAR('X');
++	/* set reset entry */
++	*(volatile unsigned int *)0xb2200f00 = 0xbfc00000;
++
++	__asm__ volatile(
++		".set push	\n\t"
++		".set mips32r2	\n\t"
++		"move $29, %0	\n\t"
++		"jr.hb   %1	\n\t"
++		"nop		\n\t"
++		".set pop	\n\t"
++		:
++		:"r" (NORMAL_RESUME_SP), "r"(NORMAL_RESUME_CODE2_ADDR)
++		:
++		);
++
++}
++static noinline void cpu_resume(void)
++{
++	unsigned int ddrc_ctrl;
++
++	TCSM_PCHAR('R');
++
++	if (sleep_param->state == PM_SUSPEND_MEM) {
++		int tmp;
++
++		/* enable pll */
++		tmp = reg_ddr_phy(0x21);
++		tmp &= ~(1 << 1);
++		reg_ddr_phy(0x21) = tmp;
++
++		while (!(reg_ddr_phy(0x32) & 0x8))
++			serial_put_hex(reg_ddr_phy(0x32));
++
++		/* dfi_init_start = 0, wait dfi_init_complete */
++		*(volatile unsigned int *)0xb3012000 &= ~(1 << 3);
++		while(!(*(volatile unsigned int *)0xb3012004 & 0x1));
++
++		/* bufferen_core = 1 */
++		tmp = rtc_read_reg(0xb0003048);
++		tmp |= (1 << 21);
++		rtc_write_reg(0xb0003048, tmp);
++
++		/* exit sr */
++		ddrc_ctrl = ddr_readl(DDRC_CTRL);
++		ddrc_ctrl &= ~(1<<5);
++		ddr_writel(ddrc_ctrl, DDRC_CTRL);
++
++		while(ddr_readl(DDRC_STATUS) & (1<<2));
++
++		TCSM_DELAY(1000);
++		TCSM_PCHAR('1');
++		ddrp_auto_calibration();
++		TCSM_PCHAR('2');
++
++		/* restore ddr auto-sr */
++		ddr_writel(sleep_param->autorefresh, DDRC_AUTOSR_EN);
++		TCSM_PCHAR('3');
++
++		/* restore ddr LPEN */
++		ddr_writel(sleep_param->dlp, DDRC_DLP);
++
++		/* restore ddr deep power down state */
++		ddrc_ctrl = ddr_readl(DDRC_CTRL);
++		ddrc_ctrl |= sleep_param->pdt;
++		ddrc_ctrl |= sleep_param->dpd;
++		ddr_writel(ddrc_ctrl, DDRC_CTRL);
++
++		TCSM_PCHAR('4');
++	}
++
++
++	TCSM_PCHAR('5');
++
++	__asm__ volatile(
++		".set push	\n\t"
++		".set mips32r2	\n\t"
++		"jr.hb %0	\n\t"
++		"nop		\n\t"
++		".set pop 	\n\t"
++		:
++		: "r" (restore_goto)
++		:
++		);
++}
++
++
++static noinline void cpu_sleep(void)
++{
++
++
++	sleep_param->cpu_div = cpm_inl(CPM_CPCCR) & 0xf;
++
++	blast_dcache32();
++	blast_scache64();
++	__sync();
++	__fast_iob();
++
++	{
++		/* before power down cpu by set PD in OPCR, reduce cpu's frequency as the same as L2C's freq */
++		unsigned int val, div;
++
++		/* change disable */
++		val = cpm_inl(CPM_CPCCR);
++		val &= ~(1 << 22);
++		cpm_outl(val, CPM_CPCCR);
++
++		/* div cpu = div l2c */
++		div = val & (0xf << 4);
++		val &= ~0xf;
++		val |= (div >> 4);
++		cpm_outl(val, CPM_CPCCR);
++
++		/* change enable */
++		val |= (1 << 22);
++		cpm_outl(val, CPM_CPCCR);
++
++		while (cpm_inl(CPM_CPCSR) & 1);
++	}
++
++	TCSM_PCHAR('D');
++
++	if (sleep_param->state == PM_SUSPEND_MEM) {
++		unsigned int tmp;
++		unsigned int ddrc_ctrl;
++
++		ddrc_ctrl = ddr_readl(DDRC_CTRL);
++
++		/* save ddr low power state */
++		sleep_param->pdt = ddrc_ctrl & DDRC_CTRL_PDT_MASK;
++		sleep_param->dpd = ddrc_ctrl & DDRC_CTRL_DPD;
++		sleep_param->dlp = ddr_readl(DDRC_DLP);
++		sleep_param->autorefresh = ddr_readl(DDRC_AUTOSR_EN);
++
++		/* ddr disable deep power down */
++		ddrc_ctrl &= ~(DDRC_CTRL_PDT_MASK);
++		ddrc_ctrl &= ~(DDRC_CTRL_DPD);
++		ddr_writel(ddrc_ctrl, DDRC_CTRL);
++
++		/* ddr diasble LPEN*/
++		ddr_writel(0, DDRC_DLP);
++
++		/* ddr disable auto-sr */
++		ddr_writel(0, DDRC_AUTOSR_EN);
++		tmp = *(volatile unsigned int *)0xa0000000;
++
++		/* DDR self refresh */
++		ddrc_ctrl = ddr_readl(DDRC_CTRL);
++		ddrc_ctrl |= 1 << 5;
++		ddr_writel(ddrc_ctrl, DDRC_CTRL);
++		while(!(ddr_readl(DDRC_STATUS) & (1<<2)));
++
++
++		/* bufferen_core = 0 */
++		tmp = rtc_read_reg(0xb0003048);
++		tmp &= ~(1 << 21);
++		rtc_write_reg(0xb0003048, tmp);
++
++
++		/* dfi_init_start = 1 */
++		*(volatile unsigned int *)0xb3012000 |= (1 << 3);
++
++		{
++			int i;
++			for (i = 0; i < 4; i++) {
++
++				__asm__ volatile("ssnop\t\n");
++				__asm__ volatile("ssnop\t\n");
++				__asm__ volatile("ssnop\t\n");
++				__asm__ volatile("ssnop\t\n");
++				__asm__ volatile("ssnop\t\n");
++				__asm__ volatile("ssnop\t\n");
++				__asm__ volatile("ssnop\t\n");
++				__asm__ volatile("ssnop\t\n");
++			}
++		}
++
++		/* disable pll */
++		reg_ddr_phy(0x21) |= (1 << 1);
++	}
++
++	TCSM_PCHAR('W');
++	__asm__ volatile(
++		".set push	\n\t"
++		".set mips32r2	\n\t"
++		"wait		\n\t"
++		"nop		\n\t"
++		"nop		\n\t"
++		"nop		\n\t"
++		".set pop	\n\t"
++	);
++
++	TCSM_PCHAR('N');
++
++	TCSM_PCHAR('\r');
++	TCSM_PCHAR('\n');
++	TCSM_PCHAR('?');
++	TCSM_PCHAR('?');
++	TCSM_PCHAR('?');
++	TCSM_PCHAR('\r');
++	TCSM_PCHAR('\n');
++
++	__asm__ volatile(
++		".set push	\n\t"
++		".set mips32r2	\n\t"
++		"jr.hb %0	\n\t"
++		"nop		\n\t"
++		".set pop 	\n\t"
++		:
++		: "r" (NORMAL_RESUME_CODE1_ADDR)
++		:
++		);
++	TCSM_PCHAR('F');
++}
++
++
++void load_func_to_sram(void)
++{
++	load_func_to_tcsm((unsigned int *)NORMAL_RESUME_CODE1_ADDR, (unsigned int *)cpu_resume_bootup, NORMAL_RESUME_CODE1_LEN);
++	load_func_to_tcsm((unsigned int *)NORMAL_RESUME_CODE2_ADDR, (unsigned int *)cpu_resume, NORMAL_RESUME_CODE2_LEN);
++	load_func_to_tcsm((unsigned int *)NORMAL_SLEEP_CODE_ADDR, (unsigned int *)cpu_sleep, NORMAL_SLEEP_CODE_LEN);
++}
++
++
++
+diff --git a/arch/mips/xburst2/soc-t41/pm/pm_sleep.h b/arch/mips/xburst2/soc-t41/pm/pm_sleep.h
+new file mode 100644
+index 00000000..01eb77ae
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/pm/pm_sleep.h
+@@ -0,0 +1,16 @@
++#ifndef __PM_SLEEP_H__
++#define __PM_SLEEP_H__
++
++
++
++void load_func_to_sram(void);
++int soc_pm_idle_pd_config(void);
++int soc_pm_idle_config(void);
++int soc_pm_sleep_config(void);
++int soc_pm_wakeup_idle_sleep(void);
++void soc_set_reset_entry(void);
++
++
++
++#endif
++
+diff --git a/arch/mips/xburst2/soc-t41/pm/regs_save_restore.S b/arch/mips/xburst2/soc-t41/pm/regs_save_restore.S
+new file mode 100644
+index 00000000..0849b138
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/pm/regs_save_restore.S
+@@ -0,0 +1,188 @@
++#include <asm/asm.h>
++#include <asm/regdef.h>
++
++#define CP0_PAGEMASK	$5,0
++#define CP0_STATUS	$12,0
++#define CP0_INTCTL	$12,1
++#define CP0_CAUSE	$13,0
++#define CP0_EBASE	$15,1
++#define CP0_CONFIG	$16,0
++#define CP0_CONFIG1	$16,1
++#define CP0_CONFIG2	$16,2
++#define CP0_CONFIG3	$16,3
++#define CP0_CONFIG4	$16,4
++#define CP0_CONFIG5	$16,5
++#define CP0_CONFIG7	$16,7
++#define CP0_LLADDR	$17,0
++#define CP0_WATCHLo	$18,0
++#define CP0_WATCHHI	$19,0
++#define CP0_ERRCTL	$26,0
++#define CP0_CONTEXT	$4,0
++#define CP0_KSCRATCH1	$31,2
++#define CP0_KSCRATCH2	$31,3
++#define CP0_KSCRATCH3	$31,4
++#define CP0_KSCRATCH4	$31,5
++#define CP0_KSCRATCH5	$31,6
++#define CP0_KSCRATCH6	$31,7
++
++	.data
++	.global _regs_stack
++_regs_stack:
++	.align 5
++	.space 140,0
++
++	.text
++	.global save_goto
++	.align 2
++	.ent save_goto,0
++save_goto:
++	.set	push
++	.set	noreorder
++	.set	noat
++
++	la	k0, _regs_stack
++	sw	s0,0(k0)
++	sw	s1,4(k0)
++	sw	s2,8(k0)
++	sw	s3,12(k0)
++	sw	s4,16(k0)
++	sw	s5,20(k0)
++	sw	s6,24(k0)
++	sw	s7,28(k0)
++	sw	gp,32(k0)
++	sw	sp,36(k0)
++	sw	fp,40(k0)
++	sw	ra,44(k0)
++
++	mfc0	k1,CP0_PAGEMASK
++	sw	k1,48(k0)
++	mfc0	k1,CP0_STATUS
++	sw	k1,52(k0)
++	mfc0	k1,CP0_INTCTL
++	sw	k1,56(k0)
++	mfc0	k1,CP0_CAUSE
++	sw	k1,60(k0)
++	mfc0	k1,CP0_EBASE
++	sw	k1,64(k0)
++	mfc0	k1,CP0_CONFIG
++	sw	k1,68(k0)
++	mfc0	k1,CP0_CONFIG1
++	sw	k1,72(k0)
++	mfc0	k1,CP0_CONFIG2
++	sw	k1,76(k0)
++	mfc0	k1,CP0_CONFIG3
++	sw	k1,80(k0)
++	mfc0	k1,CP0_CONFIG4
++	sw	k1,84(k0)
++	mfc0	k1,CP0_CONFIG5
++	sw	k1,88(k0)
++	mfc0	k1,CP0_CONFIG7
++	sw	k1,92(k0)
++	mfc0	k1,CP0_LLADDR
++	sw	k1,96(k0)
++	mfc0	k1,CP0_WATCHLo
++	sw	k1,100(k0)
++	mfc0	k1,CP0_WATCHHI
++	sw	k1,104(k0)
++	mfc0	k1,CP0_ERRCTL
++	sw	k1,108(k0)
++	mfc0	k1,CP0_CONTEXT
++	sw	k1,112(k0)
++	mfc0	k1,CP0_KSCRATCH1
++	sw	k1,116(k0)
++	mfc0	k1,CP0_KSCRATCH2
++	sw	k1,120(k0)
++	mfc0	k1,CP0_KSCRATCH3
++	sw	k1,124(k0)
++	mfc0	k1,CP0_KSCRATCH4
++	sw	k1,128(k0)
++	mfc0	k1,CP0_KSCRATCH5
++	sw	k1,132(k0)
++	mfc0	k1,CP0_KSCRATCH6
++	sw	k1,136(k0)
++
++	jr.hb	a0
++	nop
++
++	.set	at
++	.set	reorder
++	.set	pop
++	END(save_goto)
++
++	.text
++	.global restore_goto
++	.align 2
++	.ent restore_goto,0
++restore_goto:
++	.set	push
++	.set	noreorder
++	.set	noat
++
++	la	k0, _regs_stack
++	lw	s0,0(k0)
++	lw	s1,4(k0)
++	lw	s2,8(k0)
++	lw	s3,12(k0)
++	lw	s4,16(k0)
++	lw	s5,20(k0)
++	lw	s6,24(k0)
++	lw	s7,28(k0)
++	lw	gp,32(k0)
++	lw	sp,36(k0)
++	lw	fp,40(k0)
++	lw	ra,44(k0)
++
++	lw	k1,48(k0)
++	mtc0	k1,CP0_PAGEMASK
++	lw	k1,52(k0)
++	mtc0	k1,CP0_STATUS
++	lw	k1,56(k0)
++	mtc0	k1,CP0_INTCTL
++	lw	k1,60(k0)
++	mtc0	k1,CP0_CAUSE
++	lw	k1,64(k0)
++	mtc0	k1,CP0_EBASE
++	lw	k1,68(k0)
++	mtc0	k1,CP0_CONFIG
++	lw	k1,72(k0)
++	mtc0	k1,CP0_CONFIG1
++	lw	k1,76(k0)
++	mtc0	k1,CP0_CONFIG2
++	lw	k1,80(k0)
++	mtc0	k1,CP0_CONFIG3
++	lw	k1,84(k0)
++	mtc0	k1,CP0_CONFIG4
++	lw	k1,88(k0)
++	mtc0	k1,CP0_CONFIG5
++	lw	k1,92(k0)
++	mtc0	k1,CP0_CONFIG7
++	lw	k1,96(k0)
++	mtc0	k1,CP0_LLADDR
++	lw	k1,100(k0)
++	mtc0	k1,CP0_WATCHLo
++	lw	k1,104(k0)
++	mtc0	k1,CP0_WATCHHI
++	lw	k1,108(k0)
++	mtc0	k1,CP0_ERRCTL
++	lw	k1,112(k0)
++	mtc0	k1,CP0_CONTEXT
++	lw	k1,116(k0)
++	mtc0	k1,CP0_KSCRATCH1
++	lw	k1,120(k0)
++	mtc0	k1,CP0_KSCRATCH2
++	lw	k1,124(k0)
++	mtc0	k1,CP0_KSCRATCH3
++	lw	k1,128(k0)
++	mtc0	k1,CP0_KSCRATCH4
++	lw	k1,132(k0)
++	mtc0	k1,CP0_KSCRATCH5
++	lw	k1,136(k0)
++	mtc0	k1,CP0_KSCRATCH6
++
++	jr.hb	ra
++	nop
++
++	.set	at
++	.set	reorder
++	.set	pop
++	END(restore_goto)
+diff --git a/arch/mips/xburst2/soc-t41/pm/regs_save_restore.py b/arch/mips/xburst2/soc-t41/pm/regs_save_restore.py
+new file mode 100755
+index 00000000..110fd6c1
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/pm/regs_save_restore.py
+@@ -0,0 +1,123 @@
++#!/usr/bin/env python
++import os
++import string
++
++common_regs=["s0","s1","s2","s3",
++        "s4","s5","s6","s7",
++        "gp","sp","fp","ra"]
++cp0_regs=[
++        ["CP0_PAGEMASK","$5","0"],
++        ["CP0_STATUS","$12","0"],
++        ["CP0_INTCTL","$12","1"],
++        ["CP0_CAUSE","$13","0"],
++        ["CP0_EBASE","$15","1"],
++        ["CP0_CONFIG","$16","0"],
++        ["CP0_CONFIG1","$16","1"],
++        ["CP0_CONFIG2","$16","2"],
++        ["CP0_CONFIG3","$16","3"],
++	["CP0_CONFIG4", "$16", "4"],
++	["CP0_CONFIG5", "$16", "5"],
++	["CP0_CONFIG7", "$16", "7"],
++        ["CP0_LLADDR","$17","0"],
++        ["CP0_WATCHLo","$18","0"],
++        ["CP0_WATCHHI","$19","0"],
++        ["CP0_ERRCTL","$26","0"],
++        ["CP0_CONTEXT","$4","0"],
++        ["CP0_KSCRATCH1","$31","2"],
++        ["CP0_KSCRATCH2","$31","3"],
++        ["CP0_KSCRATCH3","$31","4"],
++        ["CP0_KSCRATCH4","$31","5"],
++        ["CP0_KSCRATCH5","$31","6"],
++        ["CP0_KSCRATCH6","$31","7"],
++        ]
++def gen_get_array_size():
++    size=0
++    size+=len(common_regs)
++    size+=len(cp0_regs)
++    return size
++
++def gen_print_head_and_macro():
++    print("#include <asm/asm.h>")
++    print("#include <asm/regdef.h>")
++    print("")
++    for s in cp0_regs:
++        print("#define %s\t%s,%s" %(s[0],s[1],s[2]))
++    print("")
++def gen_define_global_arg(str, num):
++    print("\t.data")
++    print("\t.global %s" %(str))
++    print("%s:" %(str))
++    print("\t.align 5")
++    print("\t.space %s,0" %(num))
++    print("")
++
++def gen_save_common_regs(index):
++    for s in common_regs:
++        print("\tsw\t%s,%d(k0)" % (s,index))
++        index=index+4
++    return index
++def gen_restore_common_regs(index):
++    for s in common_regs:
++        print("\tlw\t%s,%d(k0)" % (s,index))
++        index=index+4
++    return index
++def gen_save_cp0_regs(index):
++    for s in cp0_regs:
++        print("\tmfc0\tk1,%s" % (s[0]))
++        print("\tsw\tk1,%d(k0)" % (index))
++        index=index+4
++    return index
++def gen_restore_cp0_regs(index):
++    for s in cp0_regs:
++        print("\tlw\tk1,%d(k0)" % (index))
++        print("\tmtc0\tk1,%s" % (s[0]))
++        index=index+4
++    return index
++def gen_print_function(f_name, regs_stack):
++    index=0
++    print("\t.text")
++    print("\t.global %s" %(f_name))
++    print("\t.align 2")
++    print("\t.ent %s,0" %(f_name))
++    print("%s:" %(f_name))
++    print("\t.set\tpush")
++    print("\t.set\tnoreorder")
++    print("\t.set\tnoat")
++    print("")
++    print("\tla\tk0, %s" %(regs_stack))
++    if f_name == "save_goto":
++        index = gen_save_common_regs(index)
++        print("")
++        index = gen_save_cp0_regs(index)
++        print("")
++        print("\tjr.hb\ta0")
++        print("\tnop")
++    elif f_name == "restore_goto":
++        index = gen_restore_common_regs(index)
++        print("")
++        index = gen_restore_cp0_regs(index)
++        print("")
++        print("\tjr.hb\tra")
++        print("\tnop")
++    else:
++        print("not support")
++    print("")
++    print("\t.set\tat")
++    print("\t.set\treorder")
++    print("\t.set\tpop")
++    print("\tEND(%s)" %(f_name))
++
++
++def main():
++    regs_size=gen_get_array_size()
++    regs_size*=4
++
++    gen_print_head_and_macro()
++    gen_define_global_arg("_regs_stack", regs_size)
++    gen_print_function("save_goto", "_regs_stack")
++    print("")
++    gen_print_function("restore_goto", "_regs_stack")
++    pass
++
++if __name__ == '__main__':
++    main()
+diff --git a/arch/mips/xburst2/soc-t41/reset.c b/arch/mips/xburst2/soc-t41/reset.c
+new file mode 100644
+index 00000000..05490345
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/reset.c
+@@ -0,0 +1,327 @@
++/*
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++#include <linux/kernel.h>
++#include <linux/io.h>
++#include <linux/ioport.h>
++#include <linux/irq.h>
++#include <linux/tty.h>
++#include <linux/delay.h>
++#include <linux/proc_fs.h>
++#include <linux/kthread.h>
++#include <linux/syscore_ops.h>
++#include <linux/platform_device.h>
++#include <linux/sched/rt.h>
++#include <linux/slab.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
++#include <linux/module.h>
++
++
++#include <soc/base.h>
++#include <soc/cpm.h>
++#include <soc/extal.h>
++
++#include <asm/reboot.h>
++
++#include <jz_proc.h>
++
++#define RTC_RTCCR		(0x00)	/* rw, 32, 0x00000081 */
++#define RTC_RTCSR		(0x04)	/* rw, 32, 0x???????? */
++#define RTC_RTCSAR		(0x08)	/* rw, 32, 0x???????? */
++#define RTC_RTCGR		(0x0c)	/* rw, 32, 0x0??????? */
++#define RTC_HCR			(0x20)  /* rw, 32, 0x00000000 */
++#define RTC_HWFCR		(0x24)  /* rw, 32, 0x0000???0 */
++#define RTC_HRCR		(0x28)  /* rw, 32, 0x00000??0 */
++#define RTC_HWCR		(0x2c)  /* rw, 32, 0x00000008 */
++#define RTC_HWRSR		(0x30)  /* rw, 32, 0x00000000 */
++#define RTC_HSPR		(0x34)  /* rw, 32, 0x???????? */
++#define RTC_WENR		(0x3c)  /* rw, 32, 0x00000000 */
++#define RTC_CKPCR		(0x40)  /* rw, 32, 0x00000010 */
++#define RTC_OWIPCR		(0x44)  /* rw, 32, 0x00000010 */
++#define RTC_PWRONCR		(0x48)  /* rw, 32, 0x???????? */
++
++#define WDT_TCSR		(0x0c)  /* rw, 32, 0x???????? */
++#define WDT_TCER		(0x04)  /* rw, 32, 0x???????? */
++#define WDT_TDR			(0x00)  /* rw, 32, 0x???????? */
++#define WDT_TCNT		(0x08)  /* rw, 32, 0x???????? */
++
++#define TCU_TSSR	(0x2C)   /* Timer Stop Set Register */
++#define TCU_TSCR	(0x3C)   /* Timer Stop Clear Register */
++
++#define RTCCR_WRDY		BIT(7)
++#define WENR_WEN                BIT(31)
++
++#define RECOVERY_SIGNATURE	(0x001a1a)
++#define REBOOT_SIGNATURE	(0x003535)
++#define UNMSAK_SIGNATURE	(0x7c0000)//do not use these bits
++
++static void wdt_start_count(int msecs)
++{
++	int time = JZ_EXTAL_RTC / 64 * msecs / 1000;
++	if(time > 65535)
++		time = 65535;
++
++	outl(0,WDT_IOBASE + WDT_TCER);
++
++	outl(1 << 10, WDT_IOBASE + WDT_TCSR);
++	outl(time,WDT_IOBASE + WDT_TDR);	//data
++	outl((3<<3 | 1<<1),WDT_IOBASE + WDT_TCSR);
++	outl(1,WDT_IOBASE + WDT_TCER);
++}
++
++static void __attribute__((unused)) wdt_stop_count(void)
++{
++	outl(1 << 16,TCU_IOBASE + TCU_TSCR);
++	outl(0,WDT_IOBASE + WDT_TCNT);		//counter
++	outl(65535,WDT_IOBASE + WDT_TDR);	//data
++	outl(1 << 16,TCU_IOBASE + TCU_TSSR);
++}
++
++static int inline rtc_write_reg(int reg,int value)
++{
++	int timeout = 0x2000;
++	while(!(inl(RTC_IOBASE + RTC_RTCCR) & RTCCR_WRDY) && timeout--);
++	if(!timeout)
++	{
++		printk("WARN:NO USE RTC!!!!!\n");
++		return -1;
++	}
++	outl(0xa55a,(RTC_IOBASE + RTC_WENR));
++	while(!(inl(RTC_IOBASE + RTC_RTCCR) & RTCCR_WRDY));
++	while(!(inl(RTC_IOBASE + RTC_WENR) & WENR_WEN));
++	while(!(inl(RTC_IOBASE + RTC_RTCCR) & RTCCR_WRDY));
++	outl(value,(RTC_IOBASE + reg));
++	while(!(inl(RTC_IOBASE + RTC_RTCCR) & RTCCR_WRDY));
++
++	return 0;
++}
++
++/*
++ * Function: Keep power for CPU core when reset.
++ * So that EPC, tcsm and so on can maintain it's status after reset-key pressed.
++ */
++static int inline reset_keep_power(void)
++{
++	return rtc_write_reg(RTC_PWRONCR,
++			     inl(RTC_IOBASE + RTC_PWRONCR) & ~(1 << 0));
++}
++
++#define HWFCR_WAIT_TIME(x) ((x > 0x7fff ? 0x7fff: (0x7ff*(x)) / 2000) << 5)
++#define HRCR_WAIT_TIME(x) ((((x) > 1875 ? 1875: (x)) / 125) << 11)
++
++void jz_hibernate(void)
++{
++	uint32_t rtc_rtccr;
++
++	local_irq_disable();
++	/* Set minimum wakeup_n pin low-level assertion time for wakeup: 1000ms */
++	rtc_write_reg(RTC_HWFCR, HWFCR_WAIT_TIME(1000));
++
++	/* Set reset pin low-level assertion time after wakeup: must  > 60ms */
++	rtc_write_reg(RTC_HRCR, HRCR_WAIT_TIME(125));
++
++	/* clear wakeup status register */
++	rtc_write_reg(RTC_HWRSR, 0x0);
++
++	rtc_write_reg(RTC_HWCR, 0x0);
++
++	rtc_rtccr = inl(RTC_IOBASE + RTC_RTCCR);
++	rtc_rtccr |= 0x1 << 0;
++	rtc_write_reg(RTC_RTCCR,rtc_rtccr);
++
++	/* Put CPU to hibernate mode */
++	rtc_write_reg(RTC_HCR, 0x1);
++
++	/*poweroff the pmu*/
++//	jz_notifier_call(NOTEFY_PROI_HIGH, JZ_POST_HIBERNATION, NULL);
++
++	mdelay(200);
++
++	while(1)
++		printk("%s:We should NOT come here.%08x\n",__func__, inl(RTC_IOBASE + RTC_HCR));
++}
++
++void jz_wdt_restart(char *command)
++{
++	printk("Restarting after 500 ms\n");
++	local_irq_disable();
++	if ((command != NULL) && !strcmp(command, "recovery")) {
++		while(cpm_inl(CPM_CPSPR) != RECOVERY_SIGNATURE) {
++			printk("set RECOVERY_SIGNATURE\n");
++			cpm_outl(0x5a5a,CPM_CPSPPR);
++			cpm_outl(RECOVERY_SIGNATURE,CPM_CPSPR);
++			cpm_outl(0x0,CPM_CPSPPR);
++			udelay(100);
++		}
++	} else {
++		cpm_outl(0x5a5a,CPM_CPSPPR);
++		cpm_outl(REBOOT_SIGNATURE,CPM_CPSPR);
++		cpm_outl(0x0,CPM_CPSPPR);
++	}
++
++	wdt_start_count(500);
++	mdelay(1000);
++	while(1)
++		printk("check wdt.\n");
++}
++
++static void hibernate_restart(void)
++{
++	uint32_t rtc_rtcsr,rtc_rtccr;
++
++	while(!(inl(RTC_IOBASE + RTC_RTCCR) & RTCCR_WRDY));
++
++	rtc_rtcsr = inl(RTC_IOBASE + RTC_RTCSR);
++	rtc_rtccr = inl(RTC_IOBASE + RTC_RTCCR);
++
++	rtc_write_reg(RTC_RTCSAR,rtc_rtcsr + 5);
++	rtc_rtccr &= ~(1 << 4 | 1 << 1);
++	rtc_rtccr |= 0x3 << 2;
++	rtc_write_reg(RTC_RTCCR,rtc_rtccr);
++
++	/* Clear reset status */
++	cpm_outl(0,CPM_RSR);
++
++	/* Set minimum wakeup_n pin low-level assertion time for wakeup: 1000ms */
++	rtc_write_reg(RTC_HWFCR, HWFCR_WAIT_TIME(1000));
++
++	/* Set reset pin low-level assertion time after wakeup: must  > 60ms */
++	rtc_write_reg(RTC_HRCR, HRCR_WAIT_TIME(125));
++
++	/* clear wakeup status register */
++	rtc_write_reg(RTC_HWRSR, 0x0);
++
++	rtc_write_reg(RTC_HWCR, 0x1);
++
++
++	rtc_rtccr = inl(RTC_IOBASE + RTC_RTCCR);
++	rtc_rtccr |= 0x1 << 0;
++	rtc_write_reg(RTC_RTCCR,rtc_rtccr);
++
++
++	/* Put CPU to hibernate mode */
++	rtc_write_reg(RTC_HCR, 0x1);
++
++	mdelay(200);
++	while(1)
++		printk("%s:We should NOT come here.%08x\n",__func__, inl(RTC_IOBASE + RTC_HCR));
++}
++
++#ifdef CONFIG_HIBERNATE_RESET
++void jz_hibernate_restart(char *command)
++{
++	local_irq_disable();
++
++	if ((command != NULL) && !strcmp(command, "recovery")) {
++		jz_wdt_restart(command);
++	}
++
++	hibernate_restart();
++}
++#endif
++
++int __init reset_init(void)
++{
++	pm_power_off = jz_hibernate;
++#ifdef CONFIG_HIBERNATE_RESET
++	_machine_restart = jz_hibernate_restart;
++#else
++	_machine_restart = jz_wdt_restart;
++#endif
++	return 0;
++}
++arch_initcall(reset_init);
++
++///////////////////////////////////////////////////////////////////////////////////////////////////
++struct wdt_reset {
++	unsigned stop;
++	unsigned msecs;
++	unsigned count;
++};
++
++/* ============================reset proc=================================== */
++static char *reset_command[] = {"wdt","hibernate","recovery", "poweroff"};
++
++static int reset_show(struct seq_file *filq, void *v)
++{
++	int len = 0, i;
++
++	for(i = 0; i < ARRAY_SIZE(reset_command); i++)
++		seq_printf(filq, "%s\t", reset_command[i]);
++	seq_printf(filq,"\n");
++
++	return len;
++}
++
++static int reset_write(struct file *file, const char __user *buffer,
++		       size_t usize, loff_t *off)
++{
++	int command_size = 0;
++	int i;
++
++	if(usize == 0)
++		return -EINVAL;
++
++	command_size = ARRAY_SIZE(reset_command);
++	for(i = 0;i < command_size; i++) {
++		if(!strncmp(buffer, reset_command[i], strlen(reset_command[i])))
++			break;
++	}
++	if(i == command_size)
++		return -EINVAL;
++
++	local_irq_disable();
++	switch(i) {
++	case 0:
++		jz_wdt_restart(NULL);
++		break;
++	case 1:
++		hibernate_restart();
++		break;
++	case 2:
++		jz_wdt_restart("recovery");
++		break;
++	case 3:
++		jz_hibernate();
++		break;
++	default:
++		printk("not support command %d\n", i);
++	}
++
++	return usize;
++}
++static struct jz_single_file_ops reset_proc_fops = {
++	.read = reset_show,
++	.write = reset_write,
++};
++/* ============================reset proc end=============================== */
++
++static int __init init_reset(void)
++{
++	struct wdt_reset *wdt;
++	struct proc_dir_entry *p, *res;
++
++	wdt = kmalloc(sizeof(struct wdt_reset),GFP_KERNEL);
++	if(!wdt) {
++		return -ENOMEM;
++	}
++
++	wdt->count = 0;
++	wdt->msecs = 3000;
++
++	wdt->stop = 1;
++
++	p = jz_proc_mkdir("reset");
++	if (!p) {
++		pr_warning("create_proc_entry for common reset failed.\n");
++		return -ENODEV;
++	}
++
++	res = jz_proc_create_data("reset", 0444, p, &reset_proc_fops, wdt);
++
++	return 0;
++}
++module_init(init_reset);
+diff --git a/arch/mips/xburst2/soc-t41/serial.c b/arch/mips/xburst2/soc-t41/serial.c
+new file mode 100644
+index 00000000..25d78f8c
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/serial.c
+@@ -0,0 +1,91 @@
++/*
++ * JZ SOC serial routines for early_printk.
++ *
++ * Copyright (C) 2006 Ingenic Semiconductor Inc.
++ *
++ */
++
++#include <asm/io.h>
++
++#include <soc/base.h>
++
++#define UART_BASE	UART0_IOBASE
++#define UART_OFF	0x1000
++
++#define OFF_TDR		(0x00)
++#define OFF_LCR		(0x0C)
++#define OFF_LSR		(0x14)
++
++#define LSR_TDRQ	(1 << 5)
++#define LSR_TEMT	(1 << 6)
++
++static void check_uart(char c);
++
++static volatile u8 *uart_base;
++typedef void (*putchar_f_t)(char);
++static putchar_f_t putchar_f = check_uart;
++
++static void putchar(char ch)
++{
++	int timeout = 10000;
++	volatile u8 *base = uart_base;
++	/* Wait for fifo to shift out some bytes */
++	while ((base[OFF_LSR] & (LSR_TDRQ | LSR_TEMT))
++	       != (LSR_TDRQ | LSR_TEMT) && timeout--)
++		;
++	base[OFF_TDR] = (u8)ch;
++}
++
++static void putchar_dummy(char ch)
++{
++	return;
++}
++
++static void check_uart(char c)
++{
++	/* We Couldn't use ioremap() here */
++	volatile u8 *base = (volatile u8*)CKSEG1ADDR(UART0_IOBASE);
++	int i = 0;
++	for(i=0; i<6; i++) {
++		if(base[OFF_LCR])
++			break;
++		base += UART_OFF;
++	}
++
++	if(i<6) {
++		uart_base = base;
++		putchar_f = putchar;
++		putchar_f(c);
++	} else {
++		putchar_f = putchar_dummy;
++	}
++}
++
++/* used by early printk */
++void prom_putchar(char c)
++{
++	putchar_f(c);
++}
++
++void prom_putstr(char *s)
++{
++	while(*s) {
++		if(*s == '\n')
++			putchar_f('\r');
++		putchar_f(*s);
++		s++;
++	}
++}
++
++#if 1
++static char pbuffer[4096];
++void prom_printk(const char *fmt, ...) {
++	va_list args;
++
++	va_start(args, fmt);
++	vsnprintf(pbuffer, 4096, fmt, args);
++	va_end(args);
++
++	prom_putstr(pbuffer);
++}
++#endif
+diff --git a/arch/mips/xburst2/soc-t41/setup.c b/arch/mips/xburst2/soc-t41/setup.c
+new file mode 100644
+index 00000000..81cb6b00
+--- /dev/null
++++ b/arch/mips/xburst2/soc-t41/setup.c
+@@ -0,0 +1,109 @@
++/*
++ * Ingenic Soc Setup
++ *
++ * This file is subject to the terms and conditions of the GNU General Public
++ * License.  See the file "COPYING" in the main directory of this archive
++ * for more details.
++ *
++ * Copyright (C) 2006 Ingenic Semiconductor Inc.
++ */
++#include <linux/init.h>
++#include <linux/kernel.h>
++#include <linux/io.h>
++#include <linux/delay.h>
++#include <linux/module.h>
++#include <linux/err.h>
++#include <linux/proc_fs.h>
++#include <linux/ioport.h>
++#include <linux/of_fdt.h>
++#include <linux/of_platform.h>
++#include <linux/clk-provider.h>
++#include <linux/clocksource.h>
++#include <linux/irqchip.h>
++#include <linux/clocksource.h>
++
++#include <asm/prom.h>
++#include <soc/base.h>
++
++void __init cpm_reset(void)
++{
++}
++
++int __init setup_init(void)
++{
++#if 0
++	cpm_reset();
++	/* Set bus priority here */
++	*(volatile unsigned int *)0xb34f0240 = 0x00010003;
++	*(volatile unsigned int *)0xb34f0244 = 0x00010003;
++#endif
++
++	return 0;
++}
++extern void __init init_all_clk(void);
++/* used by linux-mti code */
++extern void *get_fdt_addr(void);
++void __init plat_mem_setup(void)
++{
++	/* use IO_BASE, so that we can use phy addr on hard manual
++	 * directly with in(bwlq)/out(bwlq) in io.h.
++	 */
++	set_io_port_base(IO_BASE);
++	ioport_resource.start	= 0x00000000;
++	ioport_resource.end	= 0xffffffff;
++	iomem_resource.start	= 0x00000000;
++	iomem_resource.end	= 0xffffffff;
++	setup_init();
++
++	__dt_setup_arch(get_fdt_addr());
++
++	return;
++}
++void __init device_tree_init(void)
++{
++	unflatten_and_copy_device_tree();
++}
++
++static int __init plat_of_populate(void)
++{
++	of_platform_default_populate(NULL, NULL, NULL);
++	return 0;
++}
++arch_initcall(plat_of_populate);
++
++void __init plat_time_init(void)
++{
++	of_clk_init(NULL);
++
++	clocksource_probe();
++}
++
++void __init arch_init_irq(void)
++{
++	irqchip_init();
++}
++
++unsigned long ispmem_base = 0;
++EXPORT_SYMBOL(ispmem_base);
++
++unsigned long ispmem_size = 0;
++EXPORT_SYMBOL(ispmem_size);
++
++static int __init ispmem_parse(char *str)
++{
++	char *retptr;
++
++	ispmem_size = memparse(str, &retptr);
++	if(ispmem_size < 0) {
++		ispmem_size = 0;
++	}
++
++	if (*retptr == '@')
++		ispmem_base = memparse(retptr + 1, NULL);
++
++	if(ispmem_base < 0) {
++		printk("## no ispmem! ##\n");
++	}
++	return 1;
++}
++__setup("ispmem=", ispmem_parse);

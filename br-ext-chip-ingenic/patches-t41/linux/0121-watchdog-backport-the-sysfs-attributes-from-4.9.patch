@@ -1,0 +1,226 @@
+From aba4636ee2da964440fbee7bc7acba3ecc1c9518 Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Wed, 29 Jul 2026 08:08:49 +0000
+Subject: [PATCH] watchdog: backport the sysfs attributes from 4.9
+
+4.4's watchdog core exposes nothing through sysfs, so the only way to ask a
+watchdog anything is the WDIOC_* ioctls on /dev/watchdog. That does not work
+when you most need it: the character device is single-open, so while the daemon
+that feeds the watchdog holds it every other opener gets -EBUSY - and an opener
+that did get in would arm the watchdog as a side effect of opening it. There is
+no safe way to inspect a running watchdog at all.
+
+Backport the read-only attribute group added upstream in 4.9, giving state,
+identity, timeout, timeleft, bootstatus, status and nowayout. These read the
+device directly and take no reference on the character device, so they work
+alongside whatever is feeding it. timeleft in particular answers the question
+that matters on a camera that resets by itself: whether the feeding is landing,
+or whether the counter is running down to zero unattended.
+
+Gated behind CONFIG_WATCHDOG_SYSFS, default n, exactly as upstream has it, so
+every board that does not ask for it is unchanged. The two edits outside the
+ifdef are inert without it: device_create() already called
+device_create_with_groups() internally with a NULL group, and the drvdata
+pointer this now passes was NULL before and is read only by the attributes.
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+---
+ drivers/watchdog/Kconfig         |   7 ++
+ drivers/watchdog/watchdog_core.c |  10 ++-
+ drivers/watchdog/watchdog_core.h |   6 ++
+ drivers/watchdog/watchdog_dev.c  | 123 +++++++++++++++++++++++++++++++
+ 4 files changed, 144 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/watchdog/Kconfig b/drivers/watchdog/Kconfig
+index 1ed7a3db..79e64394 100644
+--- a/drivers/watchdog/Kconfig
++++ b/drivers/watchdog/Kconfig
+@@ -46,6 +46,13 @@ config WATCHDOG_NOWAYOUT
+ 	  get killed. If you say Y here, the watchdog cannot be stopped once
+ 	  it has been started.
+ 
++config WATCHDOG_SYSFS
++	bool "Read different watchdog information through sysfs"
++	default n
++	help
++	  Say Y here if you want to enable watchdog device status read through
++	  sysfs attributes.
++
+ #
+ # General Watchdog drivers
+ #
+diff --git a/drivers/watchdog/watchdog_core.c b/drivers/watchdog/watchdog_core.c
+index 873f1397..6197cc71 100644
+--- a/drivers/watchdog/watchdog_core.c
++++ b/drivers/watchdog/watchdog_core.c
+@@ -193,8 +193,14 @@ static int __watchdog_register_device(struct watchdog_device *wdd)
+ 	}
+ 
+ 	devno = wdd->cdev.dev;
+-	wdd->dev = device_create(watchdog_class, wdd->parent, devno,
+-					NULL, "watchdog%d", wdd->id);
++	/*
++	 * drvdata was NULL here; the sysfs attributes reach the watchdog
++	 * through it, and nothing else reads it, so setting it is inert when
++	 * CONFIG_WATCHDOG_SYSFS is off - as is passing a NULL group, which is
++	 * exactly what device_create() did internally.
++	 */
++	wdd->dev = device_create_with_groups(watchdog_class, wdd->parent, devno,
++					wdd, wdt_groups, "watchdog%d", wdd->id);
+ 	if (IS_ERR(wdd->dev)) {
+ 		watchdog_dev_unregister(wdd);
+ 		ida_simple_remove(&watchdog_ida, id);
+diff --git a/drivers/watchdog/watchdog_core.h b/drivers/watchdog/watchdog_core.h
+index 6c951418..2bd8e091 100644
+--- a/drivers/watchdog/watchdog_core.h
++++ b/drivers/watchdog/watchdog_core.h
+@@ -31,6 +31,12 @@
+ /*
+  *	Functions/procedures to be called by the core
+  */
++#ifdef CONFIG_WATCHDOG_SYSFS
++extern const struct attribute_group *wdt_groups[];
++#else
++#define wdt_groups	NULL
++#endif
++
+ extern int watchdog_dev_register(struct watchdog_device *);
+ extern int watchdog_dev_unregister(struct watchdog_device *);
+ extern int __init watchdog_dev_init(void);
+diff --git a/drivers/watchdog/watchdog_dev.c b/drivers/watchdog/watchdog_dev.c
+index 56a649e6..525dbee0 100644
+--- a/drivers/watchdog/watchdog_dev.c
++++ b/drivers/watchdog/watchdog_dev.c
+@@ -247,6 +247,129 @@ out_timeleft:
+ 	return err;
+ }
+ 
++/*
++ *	Read-only sysfs attributes, so the watchdog can be inspected without
++ *	opening /dev/watchdog. That matters because the character device is
++ *	single-open: while the daemon that feeds the watchdog holds it, an
++ *	ioctl-based tool gets -EBUSY, and if it did get in it would arm the
++ *	watchdog just by opening it. Backported from 4.9.
++ */
++#ifdef CONFIG_WATCHDOG_SYSFS
++static ssize_t nowayout_show(struct device *dev, struct device_attribute *attr,
++				char *buf)
++{
++	struct watchdog_device *wdd = dev_get_drvdata(dev);
++
++	return sprintf(buf, "%d\n", !!test_bit(WDOG_NO_WAY_OUT, &wdd->status));
++}
++static DEVICE_ATTR_RO(nowayout);
++
++static ssize_t status_show(struct device *dev, struct device_attribute *attr,
++				char *buf)
++{
++	struct watchdog_device *wdd = dev_get_drvdata(dev);
++	ssize_t status;
++	unsigned int val;
++
++	status = watchdog_get_status(wdd, &val);
++	if (!status)
++		status = sprintf(buf, "%u\n", val);
++
++	return status;
++}
++static DEVICE_ATTR_RO(status);
++
++static ssize_t bootstatus_show(struct device *dev,
++				struct device_attribute *attr, char *buf)
++{
++	struct watchdog_device *wdd = dev_get_drvdata(dev);
++
++	return sprintf(buf, "%u\n", wdd->bootstatus);
++}
++static DEVICE_ATTR_RO(bootstatus);
++
++static ssize_t timeleft_show(struct device *dev, struct device_attribute *attr,
++				char *buf)
++{
++	struct watchdog_device *wdd = dev_get_drvdata(dev);
++	ssize_t status;
++	unsigned int val;
++
++	status = watchdog_get_timeleft(wdd, &val);
++	if (!status)
++		status = sprintf(buf, "%u\n", val);
++
++	return status;
++}
++static DEVICE_ATTR_RO(timeleft);
++
++static ssize_t timeout_show(struct device *dev, struct device_attribute *attr,
++				char *buf)
++{
++	struct watchdog_device *wdd = dev_get_drvdata(dev);
++
++	return sprintf(buf, "%u\n", wdd->timeout);
++}
++static DEVICE_ATTR_RO(timeout);
++
++static ssize_t identity_show(struct device *dev, struct device_attribute *attr,
++				char *buf)
++{
++	struct watchdog_device *wdd = dev_get_drvdata(dev);
++
++	return sprintf(buf, "%s\n", wdd->info->identity);
++}
++static DEVICE_ATTR_RO(identity);
++
++static ssize_t state_show(struct device *dev, struct device_attribute *attr,
++				char *buf)
++{
++	struct watchdog_device *wdd = dev_get_drvdata(dev);
++
++	if (watchdog_active(wdd))
++		return sprintf(buf, "active\n");
++
++	return sprintf(buf, "inactive\n");
++}
++static DEVICE_ATTR_RO(state);
++
++static umode_t wdt_is_visible(struct kobject *kobj, struct attribute *attr,
++				int n)
++{
++	struct device *dev = container_of(kobj, struct device, kobj);
++	struct watchdog_device *wdd = dev_get_drvdata(dev);
++	umode_t mode = attr->mode;
++
++	if (attr == &dev_attr_status.attr && !wdd->ops->status)
++		mode = 0;
++	else if (attr == &dev_attr_timeleft.attr && !wdd->ops->get_timeleft)
++		mode = 0;
++
++	return mode;
++}
++
++static struct attribute *wdt_attrs[] = {
++	&dev_attr_state.attr,
++	&dev_attr_identity.attr,
++	&dev_attr_timeout.attr,
++	&dev_attr_timeleft.attr,
++	&dev_attr_bootstatus.attr,
++	&dev_attr_status.attr,
++	&dev_attr_nowayout.attr,
++	NULL,
++};
++
++static const struct attribute_group wdt_group = {
++	.attrs = wdt_attrs,
++	.is_visible = wdt_is_visible,
++};
++
++const struct attribute_group *wdt_groups[] = {
++	&wdt_group,
++	NULL,
++};
++#endif /* CONFIG_WATCHDOG_SYSFS */
++
+ /*
+  *	watchdog_ioctl_op: call the watchdog drivers ioctl op if defined
+  *	@wdd: the watchdog device to do the ioctl on
+-- 
+2.34.1
+

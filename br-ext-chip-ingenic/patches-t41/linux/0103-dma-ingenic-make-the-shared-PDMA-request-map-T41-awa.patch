@@ -1,0 +1,90 @@
+From 8fa269bbc0db9b9c672ead0a215e873b366337a6 Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Tue, 28 Jul 2026 12:55:36 +0000
+Subject: [PATCH 103/111] dma: ingenic: make the shared PDMA request map
+ T41-aware
+
+T41 wires four more UARTs into the PDMA request map: requests 0xa to 0xd
+become UART5_TX/RX and UART4_TX/RX, so 0xd is UART4_RX rather than
+DMIC_RX, and I2C3 at 0x2a/0x2b is gone. The numbers genuinely differ per
+SoC, so the divergent half of the map is put behind CONFIG_SOC_T41 and
+every other SoC keeps the map it had.
+
+Guarding a dt-bindings header on a CONFIG symbol is only safe if no
+device tree depends on the guarded values, because DTS preprocessing runs
+with -undef and never sees CONFIG_ symbols. That was checked: t41.dtsi
+references only DES_* and SSI0/SSI1_*, whose numbering is identical
+across every SoC in this tree, so DTS output is unaffected either way.
+
+The ingenic,t41-pdma match table entry is guarded for the same reason the
+rest of this series is conditional - without the guard it shifts the
+driver's string table and is the one change that would alter a T40 build.
+---
+ drivers/dma/ingenic/ingenic_dma.c      |  9 ++++++++-
+ include/dt-bindings/dma/ingenic-pdma.h | 16 ++++++++++++++++
+ 2 files changed, 24 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/dma/ingenic/ingenic_dma.c b/drivers/dma/ingenic/ingenic_dma.c
+index a3fcf86a..97d2cdb3 100644
+--- a/drivers/dma/ingenic/ingenic_dma.c
++++ b/drivers/dma/ingenic/ingenic_dma.c
+@@ -669,7 +669,11 @@ static int ingenic_dma_terminate_all(struct dma_chan *chan)
+ 
+ 	/* the part handler audio driver */
+ 	if(dmac->slave_id == INGENIC_DMA_REQ_AIC_LOOP_RX || dmac->slave_id == INGENIC_DMA_REQ_AIC_TX
+-			|| dmac->slave_id == INGENIC_DMA_REQ_AIC_F_RX || dmac->slave_id == INGENIC_DMA_REQ_DMIC_RX)
++			|| dmac->slave_id == INGENIC_DMA_REQ_AIC_F_RX
++#ifndef CONFIG_SOC_T41
++			|| dmac->slave_id == INGENIC_DMA_REQ_DMIC_RX
++#endif
++			)
+ 	{
+ 		if (dmac->sdesc) {	/*DMA transfer is running*/
+ 			if (dmac->sdesc->status != STAT_STOPPED) {
+@@ -1117,6 +1121,9 @@ static const struct of_device_id ingenic_dma_dt_match[] = {
+ 	{ .compatible = "ingenic,m200-pdma", .data = (void *)(HWATTR_SPECIAL_CH01|HWATTR_INTC_IRQ)},
+ 	{ .compatible = "ingenic,x1000-pdma", .data = (void *)HWATTR_DESC_INTER},
+ 	{ .compatible = "ingenic,t40-pdma", .data = (void *)HWATTR_INTC_IRQ},
++#ifdef CONFIG_SOC_T41
++	{ .compatible = "ingenic,t41-pdma", .data = (void *)HWATTR_INTC_IRQ},
++#endif
+ 	{},
+ };
+ MODULE_DEVICE_TABLE(of, ingenic_dma_dt_match);
+diff --git a/include/dt-bindings/dma/ingenic-pdma.h b/include/dt-bindings/dma/ingenic-pdma.h
+index f94a7216..f349d7f5 100644
+--- a/include/dt-bindings/dma/ingenic-pdma.h
++++ b/include/dt-bindings/dma/ingenic-pdma.h
+@@ -6,7 +6,21 @@
+ #define INGENIC_DMA_REQ_AIC_F_RX	0x7
+ #define INGENIC_DMA_REQ_AUTO_TX	    0x8
+ #define INGENIC_DMA_REQ_SADC_RX     0x9
++/*
++ * T41 wires four more UARTs into the PDMA request map and drops DMIC and I2C3,
++ * so requests 0xa-0xd and 0x2a-0x2b mean different things there. The device
++ * trees only ever reference requests whose numbering is common to every SoC,
++ * so this split is invisible to DTS preprocessing (where CONFIG_ symbols are
++ * not defined anyway) and affects C consumers only.
++ */
++#ifdef CONFIG_SOC_T41
++#define INGENIC_DMA_REQ_UART5_TX	0xa
++#define INGENIC_DMA_REQ_UART5_RX	0xb
++#define INGENIC_DMA_REQ_UART4_TX	0xc
++#define INGENIC_DMA_REQ_UART4_RX	0xd
++#else
+ #define INGENIC_DMA_REQ_DMIC_RX	    0xd
++#endif
+ #define INGENIC_DMA_REQ_UART3_TX	0xe
+ #define INGENIC_DMA_REQ_UART3_RX	0xf
+ #define INGENIC_DMA_REQ_UART2_TX	0x10
+@@ -27,8 +41,10 @@
+ #define INGENIC_DMA_REQ_I2C1_RX	    0x27
+ #define INGENIC_DMA_REQ_I2C2_TX	    0x28
+ #define INGENIC_DMA_REQ_I2C2_RX	    0x29
++#ifndef CONFIG_SOC_T41
+ #define INGENIC_DMA_REQ_I2C3_TX	    0x2a
+ #define INGENIC_DMA_REQ_I2C3_RX	    0x2b
++#endif
+ #define INGENIC_DMA_REQ_DES_TX	    0x2e
+ #define INGENIC_DMA_REQ_DES_RX	    0x2f
+ 

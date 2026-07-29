@@ -1,0 +1,495 @@
+From c53bafd18a935337df5246a8d4b8f106273290be Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Tue, 28 Jul 2026 13:40:44 +0000
+Subject: [PATCH 105/111] mtd: ingenic_sfc_v2: make the NOR erase block size
+ selectable
+
+Every chip in this driver's table hardcodes a 32 KiB erase block, and
+flash->mtd.erasesize is taken straight from it. That is a poor fit for a
+jffs2 overlay: 64 KiB is the usual erase block for NOR, and an erase size
+that disagrees with the jffs2 on the partition is not reported as an
+error. jffs2 mis-manages the blocks instead - writes silently fail to
+stick, old nodes stay alive, and settings appear to "resurrect" after a
+reflash. It presents as a build, flash or upgrade bug and is none of
+those.
+
+The 64 KiB block erase command (NOR_ERASE_WRITE_ENABLE_64K) is already
+fully implemented in this driver and sfc_do_erase() already has the
+0x10000 case, so only the size needs to become selectable. The choice
+defaults to ERASE_SIZE_32K, so every board that does not ask for 64K
+compiles the same 32 * 1024 it did before and the substitution does not
+even shift a line number.
+
+Diagnosis, symptoms and the confirming board are documented in detail by
+Oskari Rauta from the T41NQ bring-up; the same reasoning applies to any
+board using ingenic_sfc_v2 with a 64K jffs2.
+---
+ drivers/mtd/devices/ingenic_sfc_v2/Kconfig    | 21 +++++
+ drivers/mtd/devices/ingenic_sfc_v2/spinor.h   | 92 +++++++++----------
+ .../mtd/devices/ingenic_sfc_v2/spinor_cmd.h   |  6 ++
+ 3 files changed, 73 insertions(+), 46 deletions(-)
+
+diff --git a/drivers/mtd/devices/ingenic_sfc_v2/Kconfig b/drivers/mtd/devices/ingenic_sfc_v2/Kconfig
+index fc7702f9..f088c073 100644
+--- a/drivers/mtd/devices/ingenic_sfc_v2/Kconfig
++++ b/drivers/mtd/devices/ingenic_sfc_v2/Kconfig
+@@ -40,5 +40,26 @@ config SPI_QUAD_MODE
+ 	  Say Y Here to enable spi QUAD MODE
+ endchoice
+ 
++choice
++	prompt "Erase block size"
++	default ERASE_SIZE_32K
++	help
++	  Select nor flash erase block size.
++
++	  This must match the erase block size the jffs2 on the writable
++	  partition was created with. A mismatch is not reported as an error:
++	  jffs2 mis-manages the blocks, writes silently fail to stick and old
++	  nodes stay alive. 64K is the usual choice for NOR.
++
++config ERASE_SIZE_32K
++	bool "sfc-nor 32k erase block"
++	depends on MTD_INGENIC_SFC_V2_NORFLASH
++
++config ERASE_SIZE_64K
++	bool "sfc-nor 64k erase block"
++	depends on MTD_INGENIC_SFC_V2_NORFLASH
++
++endchoice
++
+ endif
+ 
+diff --git a/drivers/mtd/devices/ingenic_sfc_v2/spinor.h b/drivers/mtd/devices/ingenic_sfc_v2/spinor.h
+index 2e46bbf0..46bed0ba 100644
+--- a/drivers/mtd/devices/ingenic_sfc_v2/spinor.h
++++ b/drivers/mtd/devices/ingenic_sfc_v2/spinor.h
+@@ -204,7 +204,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -234,7 +234,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -264,7 +264,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -294,7 +294,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 32 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 4,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -322,7 +322,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -350,7 +350,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -378,7 +378,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -406,7 +406,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 32 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 4,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -434,7 +434,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -462,7 +462,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -490,7 +490,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 30,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -518,7 +518,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 30,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -546,7 +546,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -574,7 +574,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -602,7 +602,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -632,7 +632,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -660,7 +660,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -688,7 +688,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -716,7 +716,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -744,7 +744,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -772,7 +772,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 32 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 4,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -800,7 +800,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -828,7 +828,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 32 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 4,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -856,7 +856,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -884,7 +884,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 32 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 4,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -912,7 +912,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 64 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 4,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -940,7 +940,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 32 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 4,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -968,7 +968,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 64 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 4,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -996,7 +996,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1024,7 +1024,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1052,7 +1052,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1080,7 +1080,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1108,7 +1108,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1136,7 +1136,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1164,7 +1164,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1192,7 +1192,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1220,7 +1220,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1248,7 +1248,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1276,7 +1276,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1305,7 +1305,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1333,7 +1333,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1361,7 +1361,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1389,7 +1389,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1417,7 +1417,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 8 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1445,7 +1445,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+@@ -1473,7 +1473,7 @@ static struct spi_nor_info spi_nor_info_table[] = {
+ 		.tSHSL_WR = 20,
+ 		.chip_size = 16 * 1024 * 1024,
+ 		.page_size = 256,
+-		.erase_size = 32 * 1024,
++		.erase_size = ERASE_SIZE,
+ 		.addr_len = 3,
+ 		.chip_erase_cmd = SPINOR_OP_CHIP_ERASE,
+ 		.quad_set = {
+diff --git a/drivers/mtd/devices/ingenic_sfc_v2/spinor_cmd.h b/drivers/mtd/devices/ingenic_sfc_v2/spinor_cmd.h
+index 8ca1eda9..727b4418 100644
+--- a/drivers/mtd/devices/ingenic_sfc_v2/spinor_cmd.h
++++ b/drivers/mtd/devices/ingenic_sfc_v2/spinor_cmd.h
+@@ -82,4 +82,10 @@
+ 
+ #define NOR_SIZE_16M	0x1000000
+ 
++#ifdef CONFIG_ERASE_SIZE_32K
++#define ERASE_SIZE 32*1024
++#else
++#define ERASE_SIZE 64*1024
++#endif
++
+ #endif

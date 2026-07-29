@@ -1,0 +1,55 @@
+From 7b67bdd1450adbb60ed9ea64091623c823769e44 Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Tue, 28 Jul 2026 14:59:16 +0000
+Subject: [PATCH 110/111] mfd: ingenic_adc_aux: add an 'invert' module param
+ for inverted-polarity sensors
+
+Some boards wire the day/night photoresistor so that bright light reads
+LOW and darkness reads HIGH - the inverse of what consumers expect. On
+the DML16-Z533 T41NQ used to develop this port, AUX0 measures 0 in
+bright light and about 14997 of a ~17995 full scale in the dark.
+Userspace day/night triggers assume higher = brighter and have no invert
+option, so with this wiring they never switch.
+
+Add an 'invert' module parameter: a reference ceiling. When non-zero the
+value returned to userspace becomes (invert - reading), clamped at 0 to
+avoid underflow. It is applied to the final scaled value, so tuning is
+intuitive - pick a ceiling slightly above full scale, e.g.
+ingenic_adc_aux.invert=20000, and bright reads high, dark reads low.
+
+Evaluated per sample, so it is also writable at runtime through
+/sys/module/ingenic_adc_aux/parameters/invert.
+
+Default 0 leaves every existing board exactly as it was.
+---
+ drivers/mfd/ingenic_adc_aux.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/mfd/ingenic_adc_aux.c b/drivers/mfd/ingenic_adc_aux.c
+index 12710a77..8340b6b6 100644
+--- a/drivers/mfd/ingenic_adc_aux.c
++++ b/drivers/mfd/ingenic_adc_aux.c
+@@ -33,6 +33,14 @@
+ 
+ static unsigned long int VREF_ADC = 1800;
+ 
++/* Inverted-polarity sensor support: when non-zero, the value returned to
++ * userspace becomes (invert - reading), clamped at 0. For a photoresistor wired
++ * bright=low / dark=high, set invert slightly above full scale (e.g. 20000) so
++ * bright->high, dark->low as raptor RIC day/night expects. 0 = disabled. */
++static unsigned int invert = 0;
++module_param(invert, uint, 0644);
++MODULE_PARM_DESC(invert, "reference ceiling; returned value = invert - reading (0 = disabled), e.g. 20000");
++
+ #define AUXCONST   4096
+ 
+ #define ADC_MAGIC_NUMBER	'A'
+@@ -143,6 +151,8 @@ restart:
+ 	ingenic_adc_aux->cell->disable(ingenic_adc_aux->pdev);
+ 
+ 	sadc_volt = sadc_volt * VREF_ADC*10 / AUXCONST;
++	if (invert)
++		sadc_volt = (sadc_volt < invert) ? (invert - sadc_volt) : 0;
+ 
+ 	return sadc_volt;
+ }

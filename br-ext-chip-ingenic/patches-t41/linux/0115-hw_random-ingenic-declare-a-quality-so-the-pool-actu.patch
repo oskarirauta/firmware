@@ -1,0 +1,48 @@
+From f0a5ef088b3094ada46dd843729443b0faed2ed5 Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Tue, 28 Jul 2026 23:41:29 +0000
+Subject: [PATCH] hw_random: ingenic: declare a quality so the pool actually
+ gets fed
+
+The driver registers with the hwrng core but leaves rng.quality at zero.
+The core then takes current_quality from default_quality, which is also
+zero, and never starts the kthread that calls
+add_hwgenerator_randomness() - so the device serves /dev/hwrng on demand
+and contributes nothing to the entropy pool.
+
+The effect is easy to mistake for the driver not working at all: it
+probes, it reports success, and the pool still takes the best part of a
+minute to initialise. Anything that wants randomness waits for it, which
+on this camera means majestic stalls between printing its version banner
+and reading its configuration.
+
+1000 is the usual figure for a hardware TRNG - bits of entropy per 1024
+bits of output - and rng_core.default_quality still overrides it.
+---
+ drivers/char/hw_random/ingenic-rng.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/drivers/char/hw_random/ingenic-rng.c b/drivers/char/hw_random/ingenic-rng.c
+index d6f6ce53..207b868b 100644
+--- a/drivers/char/hw_random/ingenic-rng.c
++++ b/drivers/char/hw_random/ingenic-rng.c
+@@ -165,6 +165,19 @@ static int ingenic_trng_probe(struct platform_device *pdev)
+ 	trng->rng.cleanup = ingenic_trng_cleanup;
+ 	trng->rng.read = ingenic_trng_read;
+ 
++	/*
++	 * Without a quality figure the hwrng core leaves current_quality at
++	 * default_quality, which is zero, and never starts the kthread that
++	 * feeds the entropy pool - the device then only serves /dev/hwrng on
++	 * demand and contributes nothing. On this board that is the difference
++	 * between the pool being ready at boot and taking the best part of a
++	 * minute, which anything wanting randomness sits and waits for.
++	 *
++	 * 1000 is the usual figure for a hardware TRNG: bits of entropy per
++	 * 1024 bits of output. rng_core.default_quality still overrides it.
++	 */
++	trng->rng.quality = 1000;
++
+ #ifdef TRNG_INT_SWITCH
+ 	writel(readl(TRNG_CFG) & ~TRNG_CFG_INT_MASK, TRNG_CFG);
+ 	ret = request_irq(trng->irq,ingenic_trng_interrupt,

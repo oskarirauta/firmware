@@ -1,0 +1,78 @@
+From f17b5ca300dcd68096bd9e5a0a6a2ac7e1dfd38b Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Tue, 28 Jul 2026 21:57:34 +0000
+Subject: [PATCH] clk: ingenic: keep the T41 AHB0 bus clock on
+
+gate_ahb0 carries CLK_IGNORE_UNUSED, which only keeps the framework from
+gating it in the unused-clock sweep at the end of boot. It does nothing
+after a driver has taken a reference and dropped it again. U-Boot leaves
+the clock running and nothing claims it, so the count sits at zero with
+the hardware enabled, and the first driver to enable then disable it
+switches off a bus that has been up since reset.
+
+The ISP is that driver here - gate_csi hangs off div_ahb0 - and the SD
+host is on the same bus, which the vendor tree makes explicit by placing
+it at /sys/devices/platform/ahb0/13060000.msc. So once the camera has
+been used and torn down, touching an inserted card is a bus transaction
+that never completes: the CPU stalls with interrupts disabled, the
+console dies with it, and only a power cycle recovers.
+
+Measured on hardware across a majestic teardown, reading CPM directly
+rather than trusting the framework's bookkeeping:
+
+    streaming        CLKGR=0x3D1F57E5  CLKGR1=0x000173EE  ahb0 on
+    after teardown   CLKGR=0x3F9F57E5  CLKGR1=0x000177EE  ahb0 off
+
+The MSC's own gate stays enabled throughout; only the shared bus clock
+goes. 4.4 has no CLK_IS_CRITICAL, so take a reference and never drop it,
+early enough that the out-of-tree media modules cannot get there first.
+---
+ drivers/clk/ingenic/clk-t41.c | 38 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 38 insertions(+)
+
+diff --git a/drivers/clk/ingenic/clk-t41.c b/drivers/clk/ingenic/clk-t41.c
+index a3a81287..0a9aaf5e 100644
+--- a/drivers/clk/ingenic/clk-t41.c
++++ b/drivers/clk/ingenic/clk-t41.c
+@@ -396,3 +396,41 @@ static int __init init_clk_proc(void)
+ }
+ 
+ module_init(init_clk_proc);
++
++/*
++ * Hold the AHB0 bus clock on for good.
++ *
++ * gate_ahb0 is marked CLK_IGNORE_UNUSED, which stops the framework gating it
++ * during the unused-clock sweep at the end of boot but does nothing once a
++ * driver has taken and then dropped a reference. U-Boot leaves the clock
++ * running and nothing claims it, so its reference count sits at zero with the
++ * hardware enabled - and the first driver to enable and later disable it turns
++ * off a bus that has been up since reset.
++ *
++ * On this SoC the ISP is that driver: gate_csi is parented to div_ahb0, so
++ * bringing the camera up takes the reference and tearing it down releases it.
++ * The SD host lives on the same bus (the vendor tree places it at
++ * /sys/devices/platform/ahb0/13060000.msc), so once the ISP has been used and
++ * released, any access to an inserted card is a bus transaction that never
++ * completes: the CPU stalls with interrupts off and takes the console with it,
++ * and only a power cycle recovers. Measured on hardware - CPM_CLKGR1 bit 10
++ * goes from 0 to 1 across the teardown while the MSC's own gate stays on.
++ *
++ * 4.4 has no CLK_IS_CRITICAL, so take a reference that is never dropped. This
++ * runs before any of the out-of-tree media modules are insmodded from
++ * userspace, so the count can no longer fall back to zero.
++ */
++static int __init t41_pin_bus_clocks(void)
++{
++	struct clk *ahb0 = clk_get(NULL, "gate_ahb0");
++
++	if (IS_ERR_OR_NULL(ahb0)) {
++		pr_warn("t41-clk: cannot pin gate_ahb0, SD may die with the ISP\n");
++		return 0;
++	}
++	if (clk_prepare_enable(ahb0))
++		pr_warn("t41-clk: failed to pin gate_ahb0\n");
++
++	return 0;
++}
++late_initcall(t41_pin_bus_clocks);

@@ -1,0 +1,70 @@
+From 512ff96556d0abed69ab133ddbdbf4c374d167ee Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Tue, 28 Jul 2026 14:07:20 +0000
+Subject: [PATCH 107/111] mtd: ingenic_sfc_v2: look up the SFC clocks by
+ controller index on T41
+
+T41 has two SFC controllers, so its clock provider names their clocks
+div_sfc0/div_sfc1 and gate_sfc0/gate_sfc1. This driver asks for the bare
+"div_sfc" and "gate_sfc" that the single-controller SoCs use, so on T41
+the lookup fails and the controller never probes:
+
+    ingenic-sfc 13440000.sfc0: Cannot get div_sfc clock
+    ingenic-sfc: probe of 13440000.sfc0 failed with error -12
+
+With no SFC there is no MTD, so root cannot be mounted from mtdblock3 and
+the kernel panics with "VFS: Unable to mount root fs" even though the
+mtdparts on the command line is perfectly correct.
+
+The index comes from the "sfc" device tree alias, which t41.dtsi already
+provides (sfc0, sfc1), matching what the vendor tree does. Only the T41
+branch is new; every other SoC keeps the exact code it had.
+---
+ .../ingenic_sfc_v2/ingenic_sfc_common.c       | 27 +++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/drivers/mtd/devices/ingenic_sfc_v2/ingenic_sfc_common.c b/drivers/mtd/devices/ingenic_sfc_v2/ingenic_sfc_common.c
+index dbf261ed..f25d0905 100644
+--- a/drivers/mtd/devices/ingenic_sfc_v2/ingenic_sfc_common.c
++++ b/drivers/mtd/devices/ingenic_sfc_v2/ingenic_sfc_common.c
+@@ -746,6 +746,32 @@ struct sfc *sfc_res_init(struct platform_device *pdev)
+ 	}
+ 
+ #ifndef FPGA_TEST
++#ifdef CONFIG_SOC_T41
++	/*
++	 * T41 has two SFC controllers, so its clock provider names them
++	 * div_sfc0/div_sfc1 and gate_sfc0/gate_sfc1 rather than the single
++	 * div_sfc/gate_sfc the other XBurst2 SoCs have. Take the index from
++	 * the "sfc" device tree alias, as the vendor tree does.
++	 */
++	{
++		char clkname[16];
++
++		pdev->id = of_alias_get_id(pdev->dev.of_node, "sfc");
++		snprintf(clkname, sizeof(clkname), "div_sfc%d", pdev->id);
++		sfc->clk = devm_clk_get(&pdev->dev, clkname);
++		if (IS_ERR(sfc->clk)) {
++			dev_err(&pdev->dev, "Cannot get %s clock\n", clkname);
++			return ERR_PTR(-ENOENT);
++		}
++
++		snprintf(clkname, sizeof(clkname), "gate_sfc%d", pdev->id);
++		sfc->clk_gate = devm_clk_get(&pdev->dev, clkname);
++		if (IS_ERR(sfc->clk_gate)) {
++			dev_err(&pdev->dev, "Cannot get %s clock\n", clkname);
++			return ERR_PTR(-ENOENT);
++		}
++	}
++#else
+ 	sfc->clk = devm_clk_get(&pdev->dev, "div_sfc");
+ 	if (IS_ERR(sfc->clk)) {
+ 		dev_err(&pdev->dev, "Cannot get div_sfc clock\n");
+@@ -757,6 +783,7 @@ struct sfc *sfc_res_init(struct platform_device *pdev)
+ 		dev_err(&pdev->dev, "Cannot get sfc clock\n");
+ 		return ERR_PTR(-ENOENT);
+ 	}
++#endif
+ 
+ 	clk_set_rate(sfc->clk, sfc->src_clk);
+ 	if(clk_prepare_enable(sfc->clk)) {

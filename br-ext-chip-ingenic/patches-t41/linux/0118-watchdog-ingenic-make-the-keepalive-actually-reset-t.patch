@@ -1,0 +1,60 @@
+From 13af2e105d1565ee2ebd8a8e3bc94c4b3cd7adf4 Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Wed, 29 Jul 2026 01:17:34 +0000
+Subject: [PATCH] watchdog: ingenic: make the keepalive actually reset the
+ counter
+
+The ping handler wrote TCNT and nothing else. The block ignores that
+while the counter is running: everywhere else in this driver, and in the
+SoC reset path, the counter is stopped before its registers are touched
+and started again afterwards. ingenic_watchdog_config() is exactly that
+sequence and already zeroes TCNT in the middle of it.
+
+So every keepalive was silently a no-op. The ioctl returned success,
+userspace believed the dog was being fed, and the board reset on schedule
+regardless - which is indistinguishable from the daemon never feeding at
+all, and is why the fault looked for a long time like a userspace
+problem.
+
+Measured with WDIOC_GETTIMELEFT read immediately after a successful
+keepalive: with a 50 second timeout it returned 20, then 4 one feed
+interval later, instead of returning to 50 each time.
+
+Ping through wdt_config() so the counter is stopped, zeroed and
+restarted, like every other path that writes these registers.
+---
+ drivers/watchdog/ingenic_wdt.c | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/watchdog/ingenic_wdt.c b/drivers/watchdog/ingenic_wdt.c
+index 286b674f..9f1b9ddd 100644
+--- a/drivers/watchdog/ingenic_wdt.c
++++ b/drivers/watchdog/ingenic_wdt.c
+@@ -64,9 +64,26 @@ struct ingenic_wdt_drvdata {
+ 	struct notifier_block restart_handler;
+ };
+ 
++static void wdt_config(struct ingenic_wdt_drvdata *drvdata,
++					   unsigned int new_timeout);
++
+ static int ingenic_wdt_ping(struct watchdog_device *wdt_dev)
+ {
+-	ingenic_watchdog_set_count(0);
++	struct ingenic_wdt_drvdata *drvdata = watchdog_get_drvdata(wdt_dev);
++
++	/*
++	 * Writing TCNT while the counter is running does nothing - the block
++	 * ignores it. Everywhere else that touches these registers stops the
++	 * counter first, programs it, and starts it again; ingenic_watchdog_config()
++	 * is exactly that sequence and it zeroes TCNT in the middle of it.
++	 *
++	 * So a ping that only wrote TCNT was silently a no-op: the keepalive
++	 * ioctl succeeded, userspace believed the dog was being fed, and the
++	 * board reset on schedule anyway. Measured with WDIOC_GETTIMELEFT read
++	 * straight after a successful ping - it kept counting down across pings
++	 * instead of returning to the full timeout.
++	 */
++	wdt_config(drvdata, wdt_dev->timeout);
+ 	return 0;
+ }
+ 

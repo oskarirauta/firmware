@@ -1,0 +1,118 @@
+From c9fc5232f1039f3ffc3336b9d232b48418a3a60c Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Wed, 29 Jul 2026 00:59:19 +0000
+Subject: [PATCH] watchdog: ingenic: report the time left
+
+The driver implements start, stop, ping and set_timeout but no
+get_timeleft, so /sys/class/watchdog/watchdog0/timeleft does not exist
+and WDIOC_GETTIMELEFT fails. That leaves no way to tell whether anything
+is petting the dog other than waiting to see whether the board resets -
+which turns every question about the watchdog into a multi-minute
+experiment, and hides the difference between "fed correctly" and "fed
+too slowly" entirely.
+
+No prescaler arithmetic is needed: TDR holds the whole configured timeout
+and TCNT counts up towards it, so the remaining fraction maps directly
+onto wdt_dev->timeout. The TCU MFD gains read accessors for those two
+registers, matching the setter it already exports.
+---
+ drivers/mfd/ingenic-tcu.c       | 18 ++++++++++++++++++
+ drivers/watchdog/ingenic_wdt.c  | 28 ++++++++++++++++++++++++++++
+ include/linux/mfd/ingenic-tcu.h | 10 ++++++++++
+ 3 files changed, 56 insertions(+)
+
+diff --git a/drivers/mfd/ingenic-tcu.c b/drivers/mfd/ingenic-tcu.c
+index 864f1a74..cd7eac92 100644
+--- a/drivers/mfd/ingenic-tcu.c
++++ b/drivers/mfd/ingenic-tcu.c
+@@ -514,6 +514,24 @@ void ingenic_watchdog_set_count(unsigned int value)
+ }
+ EXPORT_SYMBOL_GPL(ingenic_watchdog_set_count);
+ 
++/*
++ * Read side of the same two registers, so the watchdog driver can answer
++ * WDIOC_GETTIMELEFT. TCNT counts up towards TDR, and TDR is programmed to
++ * represent the whole timeout, so the pair expresses how much is left without
++ * anyone having to know which prescaler was chosen.
++ */
++unsigned int ingenic_watchdog_get_count(void)
++{
++	return tcu_readl(tcu, WDT_TCNT);
++}
++EXPORT_SYMBOL_GPL(ingenic_watchdog_get_count);
++
++unsigned int ingenic_watchdog_get_data(void)
++{
++	return tcu_readl(tcu, WDT_TDR);
++}
++EXPORT_SYMBOL_GPL(ingenic_watchdog_get_data);
++
+ void ingenic_watchdog_config(unsigned int tcsr_val, unsigned int timeout_value)
+ {
+ 	tcu_writel(tcu, WDT_TCER, 0);
+diff --git a/drivers/watchdog/ingenic_wdt.c b/drivers/watchdog/ingenic_wdt.c
+index 5825675d..286b674f 100644
+--- a/drivers/watchdog/ingenic_wdt.c
++++ b/drivers/watchdog/ingenic_wdt.c
+@@ -143,12 +143,40 @@ static const struct watchdog_info ingenic_wdt_info = {
+ 	.identity = "ingenic Watchdog",
+ };
+ 
++/*
++ * Report how much time is left, so /sys/class/watchdog/watchdog0/timeleft
++ * answers and WDIOC_GETTIMELEFT works. Without it the only way to tell whether
++ * anything is petting the dog is to wait and see whether the board resets,
++ * which makes every question about the watchdog cost minutes to answer.
++ *
++ * No prescaler arithmetic is needed. TDR is programmed to stand for the whole
++ * configured timeout and TCNT counts up towards it, so the remaining fraction
++ * maps straight onto that timeout in seconds.
++ */
++static unsigned int ingenic_wdt_get_timeleft(struct watchdog_device *wdt_dev)
++{
++	unsigned int tdr = ingenic_watchdog_get_data();
++	unsigned int tcnt = ingenic_watchdog_get_count();
++
++	if (!tdr || tcnt >= tdr)
++		return 0;
++
++	/*
++	 * 32-bit throughout on purpose: a 64-bit divide here would need
++	 * __udivdi3, which the kernel does not link on this architecture. TDR
++	 * is a 16-bit counter value and the timeout is capped at MAX_HEARTBEAT,
++	 * so the product cannot overflow.
++	 */
++	return ((tdr - tcnt) * wdt_dev->timeout) / tdr;
++}
++
+ static const struct watchdog_ops ingenic_wdt_ops = {
+ 	.owner = THIS_MODULE,
+ 	.start = ingenic_wdt_start,
+ 	.stop = ingenic_wdt_stop,
+ 	.ping = ingenic_wdt_ping,
+ 	.set_timeout = ingenic_wdt_set_timeout,
++	.get_timeleft = ingenic_wdt_get_timeleft,
+ };
+ 
+ static int ingenic_reset_handler(struct notifier_block *this, unsigned long mode,
+diff --git a/include/linux/mfd/ingenic-tcu.h b/include/linux/mfd/ingenic-tcu.h
+index bd8ff03e..81a0c45a 100644
+--- a/include/linux/mfd/ingenic-tcu.h
++++ b/include/linux/mfd/ingenic-tcu.h
+@@ -171,6 +171,16 @@ void ingenic_tcu_counter_stop(struct ingenic_tcu_chn *tcu_chn);
+  *
+  */
+ void ingenic_watchdog_set_count(unsigned int value);
++/**
++ * ingenic_watchdog_get_count - read the watchdog counter.
++ * ingenic_watchdog_get_data - read the watchdog compare value.
++ *
++ * TCNT counts up towards TDR, and TDR holds the whole configured timeout, so
++ * the two together give the time remaining without the caller needing to know
++ * the prescaler.
++ */
++unsigned int ingenic_watchdog_get_count(void);
++unsigned int ingenic_watchdog_get_data(void);
+ /**
+  * ingenic_watchdog_config - init watchdog.
+  * This function is only used for watchdog.

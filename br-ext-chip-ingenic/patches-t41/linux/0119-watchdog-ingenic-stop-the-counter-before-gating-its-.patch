@@ -1,0 +1,83 @@
+From c892daa59bc31ad4694a9ccf1b31781e9b497ad6 Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Wed, 29 Jul 2026 01:22:26 +0000
+Subject: [PATCH] watchdog: ingenic: stop the counter before gating its clock
+
+ingenic_wdt_stop() only called cell->disable(), which gates the block's
+clock and leaves TCER, the counter enable, set. The counter is never told
+to stop; its clock is simply taken away from under it, so the block is
+left armed and resumes counting the moment the clock comes back.
+
+Clear TCER first and gate afterwards. The order matters: once the clock
+is off the write no longer reaches the register - the same trap that made
+the keepalive a silent no-op.
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+---
+ drivers/mfd/ingenic-tcu.c       | 11 +++++++++++
+ drivers/watchdog/ingenic_wdt.c  |  8 ++++++++
+ include/linux/mfd/ingenic-tcu.h |  7 +++++++
+ 3 files changed, 26 insertions(+)
+
+diff --git a/drivers/mfd/ingenic-tcu.c b/drivers/mfd/ingenic-tcu.c
+index cd7eac92..47d0703f 100644
+--- a/drivers/mfd/ingenic-tcu.c
++++ b/drivers/mfd/ingenic-tcu.c
+@@ -526,6 +526,17 @@ unsigned int ingenic_watchdog_get_count(void)
+ }
+ EXPORT_SYMBOL_GPL(ingenic_watchdog_get_count);
+ 
++/*
++ * Clear the counter enable. Callers must do this before gating the block's
++ * clock, not after: once the clock is off the write does not reach the
++ * register, which is the same trap that made the keepalive a no-op.
++ */
++void ingenic_watchdog_disable(void)
++{
++	tcu_writel(tcu, WDT_TCER, 0);
++}
++EXPORT_SYMBOL_GPL(ingenic_watchdog_disable);
++
+ unsigned int ingenic_watchdog_get_data(void)
+ {
+ 	return tcu_readl(tcu, WDT_TDR);
+diff --git a/drivers/watchdog/ingenic_wdt.c b/drivers/watchdog/ingenic_wdt.c
+index 9f1b9ddd..a99db785 100644
+--- a/drivers/watchdog/ingenic_wdt.c
++++ b/drivers/watchdog/ingenic_wdt.c
+@@ -151,6 +151,14 @@ static int ingenic_wdt_start(struct watchdog_device *wdt_dev)
+ static int ingenic_wdt_stop(struct watchdog_device *wdt_dev)
+ {
+ 	struct ingenic_wdt_drvdata *drvdata = watchdog_get_drvdata(wdt_dev);
++
++	/*
++	 * Stop the counter before the clock goes away. Gating first would leave
++	 * the enable bit set with no way to clear it - the same trap that made
++	 * the keepalive a no-op - and the block would still be counting the next
++	 * time its clock came back.
++	 */
++	ingenic_watchdog_disable();
+ 	drvdata->cell->disable(drvdata->pdev);
+ 	return 0;
+ }
+diff --git a/include/linux/mfd/ingenic-tcu.h b/include/linux/mfd/ingenic-tcu.h
+index 81a0c45a..306eff76 100644
+--- a/include/linux/mfd/ingenic-tcu.h
++++ b/include/linux/mfd/ingenic-tcu.h
+@@ -181,6 +181,13 @@ void ingenic_watchdog_set_count(unsigned int value);
+  */
+ unsigned int ingenic_watchdog_get_count(void);
+ unsigned int ingenic_watchdog_get_data(void);
++/**
++ * ingenic_watchdog_disable - clear the watchdog counter enable.
++ *
++ * Must be called before the block's clock is gated; afterwards the write no
++ * longer reaches the register.
++ */
++void ingenic_watchdog_disable(void);
+ /**
+  * ingenic_watchdog_config - init watchdog.
+  * This function is only used for watchdog.
+-- 
+2.34.1
+

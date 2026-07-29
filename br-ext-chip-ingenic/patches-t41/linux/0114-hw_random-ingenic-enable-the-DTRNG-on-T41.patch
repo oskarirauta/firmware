@@ -1,0 +1,58 @@
+From c59ffccbca716d632c21a8489273fdde89ab844f Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Tue, 28 Jul 2026 22:19:38 +0000
+Subject: [PATCH] hw_random: ingenic: enable the DTRNG on T41
+
+The driver already matches this SoC's device tree node - it binds
+"ingenic,dtrng", which is exactly the compatible t41.dtsi declares - and
+the hardware is present. Only the Kconfig dependency list left T41 out,
+so the driver was never built and the block was never used.
+
+Without it the entropy pool takes 35 to 70 seconds to initialise on this
+board, and majestic blocks on it: the gap sits between its version banner
+and the first configuration line, measured at 38 seconds. The userspace
+seed file only helps on a boot that follows a clean shutdown, so a
+freshly flashed or factory device waits every time.
+
+Adding SOC_T41 to the dependency cannot affect any other SoC, and the
+board's dtrng node is switched on in the same change since it is the only
+board here that has the driver available.
+---
+ arch/mips/boot/dts/ingenic/t41nq.dts | 9 ++++++++-
+ drivers/char/hw_random/Kconfig       | 2 +-
+ 2 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/arch/mips/boot/dts/ingenic/t41nq.dts b/arch/mips/boot/dts/ingenic/t41nq.dts
+index b4f21d72..ea8a831e 100644
+--- a/arch/mips/boot/dts/ingenic/t41nq.dts
++++ b/arch/mips/boot/dts/ingenic/t41nq.dts
+@@ -196,8 +196,15 @@
+ 	};
+ };
+ 
++/*
++ * The DTRNG feeds the kernel entropy pool through the hwrng core. Without it
++ * the pool takes 35-70 seconds to initialise on this board, and majestic sits
++ * waiting for it right after printing its version banner - the seed file only
++ * covers boots that follow a clean shutdown, so a freshly flashed device is
++ * always slow.
++ */
+ &dtrng {
+-	status = "disable";
++	status = "okay";
+ };
+ 
+ &otg {
+diff --git a/drivers/char/hw_random/Kconfig b/drivers/char/hw_random/Kconfig
+index c9c6dbc8..541ec886 100644
+--- a/drivers/char/hw_random/Kconfig
++++ b/drivers/char/hw_random/Kconfig
+@@ -383,7 +383,7 @@ config HW_RANDOM_STM32
+ 
+ config HW_RANDOM_INGENIC
+ 	tristate "Ingenic HW Random Number Generator support"
+-	depends on MIPS && (SOC_X2000_V12 || SOC_M300)
++	depends on MIPS && (SOC_X2000_V12 || SOC_M300 || SOC_T41)
+ 	help
+ 	 This driver provides kernel-side support for the Random Number
+ 	 Generator hardware found on Ingenic processors.

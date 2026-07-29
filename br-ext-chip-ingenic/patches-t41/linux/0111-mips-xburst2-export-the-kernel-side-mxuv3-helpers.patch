@@ -1,0 +1,101 @@
+From 5484549d3deab65724734da66c43f866f9d83998 Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Tue, 28 Jul 2026 16:21:59 +0000
+Subject: [PATCH 111/111] mips: xburst2: export the kernel-side mxuv3 helpers
+
+T41's ISP driver uses the MXU v3 SIMD unit from kernel context and needs
+a pair of helpers to bracket that use, saving and restoring any userland
+MXU state around it. They do not exist here, so loading the module fails:
+
+    tx_isp_t41: Unknown symbol kernel_mxuv3_begin_partial (err 0)
+    tx_isp_t41: Unknown symbol kernel_mxuv3_end (err 0)
+
+Add them. Everything they rely on - the save_mxuv3/restore_mxuv3 macros
+and TIF_USEDMSA - is already present; this only appends the two functions
+and their declarations, changing nothing that exists.
+
+The helpers are SoC-agnostic and would be reasonable to build
+unconditionally. They are behind CONFIG_SOC_T41 purely so that builds for
+every other XBurst2 SoC come out bit-identical, since otherwise they gain
+two exported symbols they have no consumer for. Dropping the guard would
+be a fine simplification if that is preferred.
+---
+ arch/mips/xburst2/common/mxuv3.c       | 44 ++++++++++++++++++++++++++
+ arch/mips/xburst2/core/include/mxuv3.h | 14 ++++++++
+ 2 files changed, 58 insertions(+)
+
+diff --git a/arch/mips/xburst2/common/mxuv3.c b/arch/mips/xburst2/common/mxuv3.c
+index b15c9bf9..5e1c8ce0 100644
+--- a/arch/mips/xburst2/common/mxuv3.c
++++ b/arch/mips/xburst2/common/mxuv3.c
+@@ -692,3 +692,47 @@ void __restore_mxuv3(void * tsk_void)
+ 	LA(o, VR31, 1, base, 32);
+ #endif
+ }
++
++#ifdef CONFIG_SOC_T41
++
++/*
++ * Kernel-side mxuv3 support functions
++ */
++void kernel_mxuv3_begin_partial(unsigned int num_regs)
++{
++	if (in_interrupt()) {
++		printk("%s in interrupt\n", __func__);
++		BUG_ON(1);
++	} else {
++		/*
++		 * Save the userland FPSIMD state if we have one and if we
++		 * haven't done so already. Clear fpsimd_last_state to indicate
++		 * that there is no longer userland FPSIMD state in the
++		 * registers.
++		 */
++		preempt_disable();
++
++		if (current->mm && !test_and_set_thread_flag(TIF_USEDMSA)) {
++			save_mxuv3(current);
++		}
++		set_c0_status(ST0_CU2);
++	}
++}
++EXPORT_SYMBOL(kernel_mxuv3_begin_partial);
++
++void kernel_mxuv3_end(void)
++{
++	if (in_interrupt()) {
++		printk("%s in interrupt\n", __func__);
++		BUG_ON(1);
++	} else {
++		if (test_thread_flag(TIF_USEDMSA)) {
++			restore_mxuv3(current);
++			clear_thread_flag(TIF_USEDMSA);
++		}
++		preempt_enable();
++	}
++}
++EXPORT_SYMBOL(kernel_mxuv3_end);
++
++#endif /* CONFIG_SOC_T41 */
+diff --git a/arch/mips/xburst2/core/include/mxuv3.h b/arch/mips/xburst2/core/include/mxuv3.h
+index 89da5c9a..472ac1e1 100644
+--- a/arch/mips/xburst2/core/include/mxuv3.h
++++ b/arch/mips/xburst2/core/include/mxuv3.h
+@@ -39,4 +39,18 @@ static inline void init_mxuv3(void)
+ 			__restore_mxuv3(tsk);					\
+ 	} while (0)
+ 
++#ifdef CONFIG_SOC_T41
++/*
++ * Kernel-side mxuv3 support functions.
++ *
++ * These are SoC-agnostic; the guard exists only so that builds for other
++ * XBurst2 SoCs stay bit-identical. tx-isp on T41 is the only in-tree or
++ * out-of-tree consumer today.
++ */
++#define kernel_mxuv3_begin()     kernel_mxuv3_begin_partial(32)
++
++void kernel_mxuv3_begin_partial(unsigned int num_regs);
++void kernel_mxuv3_end(void);
++#endif
++
+ #endif /* _ASM_MXU_V3_H */

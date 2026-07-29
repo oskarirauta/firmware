@@ -1,0 +1,1374 @@
+From d2adac873ce135fe40c741509402e96ff4b5579f Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Tue, 28 Jul 2026 12:55:35 +0000
+Subject: [PATCH 102/111] mips: dts: ingenic: add T41 SoC and the T41NQ camera
+ board
+
+t41.dtsi and t41-pinctrl.dtsi describe the SoC and come from the Ingenic
+4.4.94 BSP. t41nq.dts is the board file for the common unbranded T41NQ
+camera with a GC5603 sensor; it is the device tree that thingino ships
+for this hardware and is known to boot it.
+
+Only the board actually supported is offered, matching how the T40 side
+of this tree ships shark.dts alone: the vendor reference boards marmot
+and tomcat are left out.
+
+Console is uart1 on the uart1_pb pins. The sensor sits at i2c0 0x31 with
+its reset on GPIO 18. SD card detect is gpb26, active low.
+---
+ arch/mips/boot/dts/ingenic/Makefile           |   1 +
+ arch/mips/boot/dts/ingenic/t41-pinctrl.dtsi   | 315 +++++++++
+ arch/mips/boot/dts/ingenic/t41.dtsi           | 642 ++++++++++++++++++
+ arch/mips/boot/dts/ingenic/t41nq.dts          | 279 ++++++++
+ .../interrupt-controller/t41-irq.h            |  73 ++
+ 5 files changed, 1310 insertions(+)
+ create mode 100644 arch/mips/boot/dts/ingenic/t41-pinctrl.dtsi
+ create mode 100644 arch/mips/boot/dts/ingenic/t41.dtsi
+ create mode 100644 arch/mips/boot/dts/ingenic/t41nq.dts
+ create mode 100644 include/dt-bindings/interrupt-controller/t41-irq.h
+
+diff --git a/arch/mips/boot/dts/ingenic/Makefile b/arch/mips/boot/dts/ingenic/Makefile
+index e2645a8b..af37ec4e 100644
+--- a/arch/mips/boot/dts/ingenic/Makefile
++++ b/arch/mips/boot/dts/ingenic/Makefile
+@@ -9,6 +9,7 @@ dtb-$(CONFIG_DT_T40_SHARK)	+= shark_fast.dtb
+ else
+ dtb-$(CONFIG_DT_T40_SHARK)	+= shark.dtb
+ endif
++dtb-$(CONFIG_DT_T41_T41NQ)	+= t41nq.dtb
+ obj-y				+= $(patsubst %.dtb, %.dtb.o, $(dtb-y))
+ 
+ # Force kbuild to make empty built-in.o if necessary
+diff --git a/arch/mips/boot/dts/ingenic/t41-pinctrl.dtsi b/arch/mips/boot/dts/ingenic/t41-pinctrl.dtsi
+new file mode 100644
+index 00000000..6ed1b367
+--- /dev/null
++++ b/arch/mips/boot/dts/ingenic/t41-pinctrl.dtsi
+@@ -0,0 +1,315 @@
++#include <dt-bindings/pinctrl/ingenic-pinctrl.h>
++
++&pinctrl {
++	uart0_pin: uart0-pin {
++		uart0_pb: uart0-pb {
++			ingenic,pinmux = <&gpb 19 19>,<&gpb 22 22>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++
++		uart0_pc: uart0-pc {
++			ingenic,pinmux = <&gpc 8 9>,<&gpc 11 12>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++	};
++
++	uart1_pin: uart1-pin {
++		uart1_pb: uart1-pb {
++			ingenic,pinmux = <&gpb 23 24>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++	};
++
++	uart2_pin: uart2-pin {
++		uart2_pc: uart2-pc {
++			ingenic,pinmux = <&gpc 13 14>, <&gpc 19 20>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++
++		uart2_pd: uart2-pd {
++			ingenic,pinmux = <&gpd 9 12>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION1>;
++		};
++	};
++
++	uart3_pin: uart3-pin {
++		uart3_pb: uart3-pb {
++			ingenic,pinmux = <&gpb 25 26>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION1>;
++		};
++
++		uart3_pd: uart3-pd {
++			ingenic,pinmux = <&gpd 0 1>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++	};
++
++	uart4_pin: uart4-pin {
++		uart4_pb: uart4-pb {
++			ingenic,pinmux = <&gpb 29 30>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION1>;
++		};
++
++		uart4_pd: uart4-pd {
++			ingenic,pinmux = <&gpd 2 3>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++	};
++
++	uart5_pin: uart5-pin {
++		uart5_pb: uart5-pb {
++			ingenic,pinmux = <&gpb 6 7>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION1>;
++		};
++
++		uart5_pd: uart5-pd {
++			ingenic,pinmux = <&gpd 4 5>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++	};
++
++	i2c0_pin: i2c0-pin {
++		i2c0_pa: i2c0-pa {
++			ingenic,pinmux = <&gpa 12 13>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION1>;
++		};
++	};
++
++	i2c1_pin: i2c1-pin {
++		i2c1_pb: i2c1-pb {
++			ingenic,pinmux = <&gpb 25 26>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++
++		i2c1_pc: i2c1-pc {
++			ingenic,pinmux = <&gpc 19 20>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION1>;
++		};
++
++		i2c1_pd: i2c1-pd {
++			ingenic,pinmux = <&gpd 6 7>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++	};
++
++	i2c2_pin: i2c2-pin {
++		i2c2_pb_1: i2c2-pb_1 {
++			ingenic,pinmux = <&gpb 10 11>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++
++		i2c2_pb_2: i2c2-pb_2 {
++			ingenic,pinmux = <&gpb 27 28>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION1>;
++		};
++
++		i2c2_pc: i2c2-pc {
++			ingenic,pinmux = <&gpc 8 9>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION1>;
++		};
++
++	};
++
++	vo_pin: vo-pin {
++		vo_pd: vo-pd {
++			ingenic,pinmux = <&gpd 0 8>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION1>;
++		};
++	};
++
++	msc0_pin: msc0-pin {
++		msc0_pb: msc0-pb {
++			ingenic,pinmux = <&gpb 0 5>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++	};
++
++	msc1_pin: msc1-pin {
++		msc1_pb: msc1-pb {
++			ingenic,pinmux = <&gpb 17 22>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION1>;
++		};
++
++		msc1_pc: msc1-pc {
++			ingenic,pinmux = <&gpc 2 7>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++	};
++
++	mac0_rmii_p0: mac0-rmii-p0 {
++		mac0_rmii_p0_normal: mac0-rmii-normal {
++			ingenic,pinmux = <&gpb 15 16>, <&gpb 9 9>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++
++		mac0_rmii_p0_rst: mac0-rmii-p0-rst {
++			ingenic,pinmux = <&gpb 15 16>, <&gpb 9 9>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCHILVL>;
++		};
++	};
++
++	mac0_rmii_p1: mac0-rmii-p1 {
++		mac0_rmii_p1_normal: mac0-rmii-p1-normal {
++			ingenic,pinmux = <&gpb 7 7>, <&gpb 13 14>, <&gpb 8 8>, <&gpb 10 11>, <&gpb 6 6>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++
++		mac0_rmii_p1_nomdio: mac0-rmii-p1-nomdio {
++			ingenic,pinmux = <&gpb 7 7>, <&gpb 13 14>, <&gpb 8 8>, <&gpb 6 6>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++	};
++
++
++	pwm_pin: pwm-pin{
++		pwm_pc: pwm-pc{
++			ingenic,pinmux = <&gpc 15 18>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++	 };
++
++	sfc_pin: sfc-pin {
++		sfc0_pa: sfc0-pa {
++			ingenic,pinmux = <&gpa 23 28>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION1>;
++		};
++	    sfc1_pa: sfc1-pa {
++			ingenic,pinmux = <&gpa 20 22>,<&gpa 29 31>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION1>;
++		};
++
++	};
++
++	vic_pin: vic-pin {
++		vic_pa_low_10bit: vic-pa-low-10bit {
++			ingenic,pinmux = <&gpa 0 9>, <&gpa 12 14>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++		vic_pa_high_10bit: vic-pa-high-10bit {
++			ingenic,pinmux = <&gpa 2 14>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++		vic_pa_12bit: vic-pa-12bit {
++			ingenic,pinmux = <&gpa 0 14>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++	 };
++
++	cim_vic_mclk: cim-vic-mclk {
++		cim0_vic_mclk_pa: cim0-vic-mclk-pa {
++			ingenic,pinmux = <&gpa 15 15>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION1>;
++		};
++	};
++
++	lcd_pins: lcd-pins {
++		smart_lcd_pd: smart-lcd-pd {
++			ingenic,pinmux = <&gpd 0 12>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++	};
++
++    dmic_pin: dmic-pin {
++	    dmic_pb: dmic-pb {
++		    ingenic,pinmux = <&gpb 28 30>;
++		    ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++	    };
++
++	    dmic_pa: dmic-pa {
++		    ingenic,pinmux = <&gpa 14 14>,<&gpa 16 17>;
++		    ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++	    };
++    };
++
++    spi0_pin: spi0_pin {
++	    spi0_pa: spi0-pa {
++		    ingenic,pinmux = <&gpa 6 9>;
++		    ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++	    };
++
++	    spi0_pc: spi0-pc {
++		    ingenic,pinmux = <&gpc 2 5>;
++		    ingenic,pinmux-funcsel = <PINCTL_FUNCTION1>;
++	    };
++    };
++
++    spi1_pin: spi1_pin {
++	    spi1_pa: spi1-pa {
++		    ingenic,pinmux = <&gpa 20 22>,<&gpa 29 29>;
++		    ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++	    };
++
++	    spi1_pb: spi1-pb {
++		    ingenic,pinmux = <&gpb 27 30>;
++		    ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++	    };
++    };
++
++	pwm_pins: pwm-pins {
++		pwm0_pc: pwm0_pc {
++			ingenic,pinmux = <&gpc 15 15>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++		pwm0_pb: pwm0_pb {
++			ingenic,pinmux = <&gpb 17 17>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++		pwm1_pb: pwm1_pb {
++			ingenic,pinmux = <&gpb 18 18>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
++		};
++		pwm1_pc: pwm1_pc {
++			ingenic,pinmux = <&gpc 16 16>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++		pwm2_pb: pwm2_pb {
++			ingenic,pinmux = <&gpb 8 8>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++		pwm2_pc: pwm2_pc {
++			ingenic,pinmux = <&gpc 17 17>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++		pwm3_pb: pwm3_pb {
++			ingenic,pinmux = <&gpb 9 9>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++		pwm3_pc: pwm3_pc {
++			ingenic,pinmux = <&gpc 18 18>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++		pwm4_pb: pwm4_pb {
++			ingenic,pinmux = <&gpb 13 13>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++		pwm4_pd: pwm4_pd {
++			ingenic,pinmux = <&gpd 9 9>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++		pwm5_pb: pwm5_pb {
++			ingenic,pinmux = <&gpb 14 14>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++		pwm5_pd: pwm5_pd {
++			ingenic,pinmux = <&gpd 10 10>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++		pwm6_pb: pwm6_pb {
++			ingenic,pinmux = <&gpb 15 15>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++		pwm6_pd: pwm6_pd {
++			ingenic,pinmux = <&gpd 11 11>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++		pwm7_pb: pwm7_pb {
++			ingenic,pinmux = <&gpb 16 16>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++		pwm7_pd: pwm7_pd {
++			ingenic,pinmux = <&gpd 12 12>;
++			ingenic,pinmux-funcsel = <PINCTL_FUNCTION2>;
++		};
++	};
++};
++
+diff --git a/arch/mips/boot/dts/ingenic/t41.dtsi b/arch/mips/boot/dts/ingenic/t41.dtsi
+new file mode 100644
+index 00000000..cd2cb348
+--- /dev/null
++++ b/arch/mips/boot/dts/ingenic/t41.dtsi
+@@ -0,0 +1,642 @@
++#include <dt-bindings/interrupt-controller/t41-irq.h>
++#include <dt-bindings/clock/ingenic-tcu.h>
++#include <dt-bindings/sound/ingenic-baic.h>
++#include <dt-bindings/net/ingenic_gmac.h>
++#include <dt-bindings/dma/ingenic-pdma.h>
++
++/ {
++	#address-cells = <1>;
++	#size-cells = <1>;
++	compatible = "ingenic,t41";
++
++	aliases: aliases {
++		i2c0 = &i2c0;
++		i2c1 = &i2c1;
++		i2c2 = &i2c2;
++		vo   = &vo;
++		uart0 = &uart0;
++		uart1 = &uart1;
++		uart2 = &uart2;
++		uart3 = &uart3;
++		uart4 = &uart4;
++		uart5 = &uart5;
++		msc0 = &msc0;
++		msc1 = &msc1;
++		mac0 = &mac0;
++		spi0 = &spi0;
++		spi1 = &spi1;
++		sfc0 = &sfc0;
++		sfc1 = &sfc1;
++	};
++
++	cpus: cpus {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		cpu0: cpu@0 {
++			device_type = "cpu";
++			compatible = "ingenic,xburst2";
++			reg = <0x000>;
++			clock-frequency = <800000000>;
++		};
++
++		cpu1: cpu@1 {
++			device_type = "cpu";
++			compatible = "ingenic,xburst2";
++			reg = <0x001>;
++			clock-frequency = <800000000>;
++		};
++	};
++
++	cpufreq: cpufreq-dt {
++		 compatible = "ingenic,t41-cpufreq";
++		 status = "okay";
++	};
++
++	cpuintc: interrupt-controller {
++		#address-cells = <0>;
++		#interrupt-cells = <1>;
++		interrupt-controller;
++		compatible = "ingenic,cpu-interrupt-controller";
++
++	};
++
++	core_intc: core-intc@0x12300000 {
++		compatible = "ingenic,core-intc";
++		reg = <0x12300000 0x1000>;
++		interrupt-controller;
++		#interrupt-cells = <1>;
++		cpu-intc-map = <0 0x000>,
++				<1 0x100>,
++				<2 0x200>,
++				<3 0x300>;
++
++		interrupt-parent = <&cpuintc>;
++		interrupts = <CORE_INTC_IRQ>;
++		interrupt-names ="intc";
++	};
++
++	core_ost: core-ost@0x12000000 {
++		compatible = "ingenic,core-ost";
++		reg = <0x12000000 0x10000>, /*Global ost*/
++		      <0x12100000 0x10000>; /*Core ost*/
++		interrupt-parent = <&cpuintc>;
++		interrupt-names = "sys_ost";
++		interrupts = <CORE_SYS_OST_IRQ>;
++		cpu-ost-map = 	<0 0x000>,
++			<1 0x100>;
++	};
++
++	extclk: extclk {
++		compatible = "ingenic,fixed-clock";
++		clock-output-names ="ext";
++		#clock-cells = <0>;
++		clock-frequency  = <24000000>;
++	};
++
++	rtcclk: rtcclk {
++		compatible = "ingenic,fixed-clock";
++		clock-output-names ="rtc_ext";
++		#clock-cells = <0>;
++		clock-frequency = <32768>;
++	};
++
++	clock: clock-controller@0x10000000 {
++		compatible = "ingenic,t41-clocks";
++		reg = <0x10000000 0x100>;
++		clocks = <&extclk>, <&rtcclk>;
++		clock-names = "ext", "rtc_ext";
++		#clock-cells = <1>;
++		little-endian;
++	};
++
++	aip: aip@0x12b00000 {
++		compatible = "ingenic,t41-aip";
++		reg = <0x12b00000 0x10000>;
++		interrupt-parent = <&core_intc>;
++		interrupts = <IRQ_AIP0>,
++			<IRQ_AIP1>,
++			<IRQ_AIP2>;
++		status = "disabled";
++	};
++
++	apb {
++		compatible = "simple-bus";
++		#address-cells = <1>;
++		#size-cells = <1>;
++		ranges = <>;
++		tcu: tcu@0x10002000 {
++			compatible = "ingenic,tcu";
++			reg = <0x10002000 0x200>;
++			interrupt-parent = <&core_intc>;
++			interrupt-names = "tcu_int0";
++			interrupts = <IRQ_TCU0>;
++			interrupt-controller;
++			status = "okay";
++
++			channel0: channel0 {
++				compatible = "ingenic,tcu_chn0";
++				ingenic,channel-info = <CHANNEL_INFO(0, TCU_MODE1, 0, 0)>;
++			};
++			channel1: channel1 {
++				compatible = "ingenic,tcu_chn1";
++				ingenic,channel-info = <CHANNEL_INFO(1, TCU_MODE2, 0, 0)>;
++			};
++			channel2: channel2 {
++				compatible = "ingenic,tcu_chn2";
++				ingenic,channel-info = <CHANNEL_INFO(2, TCU_MODE2, 0, 0)>;
++			};
++			channel3: channel3 {
++				compatible = "ingenic,tcu_chn3";
++				ingenic,channel-info = <CHANNEL_INFO(3, TCU_MODE1, 0, 0)>;
++			};
++			channel4: channel4 {
++				compatible = "ingenic,tcu_chn4";
++				ingenic,channel-info = <CHANNEL_INFO(4, TCU_MODE1, 0, 0)>;
++			};
++			channel5: channel5 {
++				compatible = "ingenic,tcu_chn5";
++				ingenic,channel-info = <CHANNEL_INFO(5, TCU_MODE1, 0, 0)>;
++			};
++			channel6: channel6 {
++				compatible = "ingenic,tcu_chn6";
++				ingenic,channel-info = <CHANNEL_INFO(6, TCU_MODE1, 0, 0)>;
++			};
++			channel7: channel7 {
++				compatible = "ingenic,tcu_chn7";
++				ingenic,channel-info = <CHANNEL_INFO(7, TCU_MODE1, 0, 0)>;
++			};
++			channel16: channel16 {
++				compatible = "ingenic,watchdog";
++				ingenic,channel-info = <CHANNEL_INFO(16, 0, 0, 0)>;
++			};
++		};
++
++		pinctrl: pinctrl@0x10010000 {
++			compatible = "ingenic,t41-pinctrl";
++			reg = <0x10010000 0x1000>;
++			ingenic,num-chips = <4>;
++			ingenic,regs-offset = <0x100>;
++
++			gpa: gpa {
++				gpio-controller;
++				#gpio-cells = <3>;
++				#ingenic,pincfg-cells = <3>;
++				#ingenic,pinmux-cells = <2>;
++				interrupts = <IRQ_GPIO0>;
++				interrupt-parent = <&core_intc>;
++				interrupt-controller;
++				#interrupt-cells = <3>;
++				ingenic,num-gpios = <32>;
++				ingenic,pull-gpios-low = <0x55555555>;
++				ingenic,pull-gpios-high = <0x55555555>;
++			};
++
++			gpb: gpb {
++				gpio-controller;
++				#gpio-cells = <3>;
++				#ingenic,pincfg-cells = <3>;
++				#ingenic,pinmux-cells = <2>;
++				interrupts = <IRQ_GPIO1>;
++				interrupt-parent = <&core_intc>;
++				interrupt-controller;
++				#interrupt-cells = <3>;
++				ingenic,num-gpios = <32>;
++				ingenic,pull-gpios-low = <0x55555555>;
++				ingenic,pull-gpios-high = <0x55555555>;
++			};
++
++			gpc: gpc {
++				gpio-controller;
++				#gpio-cells = <3>;
++				#ingenic,pincfg-cells = <3>;
++				#ingenic,pinmux-cells = <2>;
++				interrupts = <IRQ_GPIO2>;
++				interrupt-parent = <&core_intc>;
++				interrupt-controller;
++				#interrupt-cells = <3>;
++				ingenic,num-gpios = <32>;
++				ingenic,pull-gpios-low = <0x55555555>;
++				ingenic,pull-gpios-high = <0x55555555>;
++			};
++
++			gpd: gpd {
++				gpio-controller;
++				#gpio-cells = <3>;
++				#ingenic,pincfg-cells = <3>;
++				#ingenic,pinmux-cells = <2>;
++				interrupts = <IRQ_GPIO3>;
++				interrupt-parent = <&core_intc>;
++				interrupt-controller;
++				#interrupt-cells = <3>;
++				ingenic,num-gpios = <32>;
++				ingenic,pull-gpios-low = <0x55555555>;
++				ingenic,pull-gpios-high = <0x55555555>;
++			};
++		};
++
++		rtc: rtc@0x10003000 {
++			compatible = "ingenic,rtc";
++			reg = <0x10003000 0x1000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_RTC>;
++			status = "okay";
++		};
++
++		uart0: serial@0x10030000 {
++			compatible = "ingenic,8250-uart";
++			reg = <0x10030000 0x1000>;
++			reg-shift = <2>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_UART0>;
++			pinctrl-names = "default";
++			pinctrl-0 = <&uart0_pc>;
++			status = "okay";
++		};
++
++		uart1: serial@0x10031000 {
++			compatible = "ingenic,8250-uart";
++			reg = <0x10031000 0x1000>;
++			reg-shift = <2>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_UART1>;
++			pinctrl-names = "default";
++			pinctrl-0 = <&uart1_pb>;
++			status = "okay";
++		};
++
++		uart2: serial@0x10032000 {
++			compatible = "ingenic,8250-uart";
++			reg = <0x10032000 0x1000>;
++			reg-shift = <2>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_UART2>;
++			pinctrl-names = "default";
++			pinctrl-0 = <&uart2_pd>;
++			status = "okay";
++		};
++
++		uart3: serial@0x10033000 {
++			compatible = "ingenic,8250-uart";
++			reg = <0x10033000 0x1000>;
++			reg-shift = <2>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_UART3>;
++			pinctrl-names = "default";
++			pinctrl-0 = <&uart3_pd>;
++			status = "okay";
++		};
++
++		uart4: serial@0x10034000 {
++			compatible = "ingenic,8250-uart";
++			reg = <0x10034000 0x1000>;
++			reg-shift = <2>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_UART4>;
++			pinctrl-names = "default";
++			pinctrl-0 = <&uart4_pb>;
++			status = "okay";
++		};
++
++		uart5: serial@0x10035000 {
++			compatible = "ingenic,8250-uart";
++			reg = <0x10035000 0x1000>;
++			reg-shift = <2>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_UART5>;
++			pinctrl-names = "default";
++			pinctrl-0 = <&uart5_pd>;
++			status = "okay";
++		};
++
++		spi0: spi0@0x10043000 {
++			compatible = "ingenic,spi";
++			reg = <0x10043000 0x1000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_SSI0>;
++			dmas = <&pdma INGENIC_DMA_TYPE(INGENIC_DMA_REQ_SSI0_TX)>,
++				   <&pdma INGENIC_DMA_TYPE(INGENIC_DMA_REQ_SSI0_RX)>;
++			dma-names = "tx", "rx";
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "okay";
++		};
++
++		spi1: spi1@0x10044000 {
++			compatible = "ingenic,spi";
++			reg = <0x10044000 0x1000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_SSI1>;
++			dmas = <&pdma INGENIC_DMA_TYPE(INGENIC_DMA_REQ_SSI1_TX)>,
++				   <&pdma INGENIC_DMA_TYPE(INGENIC_DMA_REQ_SSI1_RX)>;
++			dma-names = "tx", "rx";
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "okay";
++		};
++
++		i2c0: i2c@0x10050000 {
++			compatible = "ingenic,t41-i2c";
++			reg = <0x10050000 0x1000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_I2C0>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "okay";
++		};
++
++		i2c1: i2c@0x10051000 {
++			compatible = "ingenic,t41-i2c";
++			reg = <0x10051000 0x1000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_I2C1>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "okay";
++		};
++
++		i2c2: i2c@0x10052000 {
++			compatible = "ingenic,t41-i2c";
++			reg = <0x10052000 0x1000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_I2C2>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "okay";
++		};
++
++		otg_phy: otg_phy {
++			compatible = "ingenic,innophy";
++			reg = <0x10000000 0x1000 0x10060000 0x1000>;
++		};
++
++		des: des@0x10061000 {
++			compatible = "ingenic,des";
++			reg = <0x10043000 0x1000>;
++			dmas = <&pdma INGENIC_DMA_TYPE(INGENIC_DMA_REQ_DES_TX)>,
++			<&pdma INGENIC_DMA_TYPE(INGENIC_DMA_REQ_DES_RX)>;
++			dma-names = "tx", "rx";
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		sadc: sadc@10070000 {
++			compatible = "ingenic,sadc";
++			reg = <0x10070000 0x1000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_SADC>;
++			status = "okay";
++		};
++
++		dtrng: dtrng@0x10072000 {
++			compatible = "ingenic,dtrng";
++			reg = <0x10072000 0x1000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_DTRNG>;
++			status = "okay";
++		};
++	};
++
++	ahb2 {
++		compatible = "simple-bus";
++		#address-cells = <1>;
++		#size-cells = <1>;
++		ranges = <>;
++
++		pdma: dma@13420000 {
++			compatible = "ingenic,t41-pdma";
++			reg = <0x13420000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupt-names = "pdma", "pdmam";
++			interrupts = <IRQ_PDMA>, <IRQ_PDMAM>;
++			#dma-channels = <32>;
++			#dma-cells = <1>;
++			ingenic,reserved-chs = <0x3>;
++		};
++
++		aes: aes@0x13430000 {
++			compatible = "ingenic,aes";
++			reg = <0x13430000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_AES>;
++			status = "disabled";
++		};
++
++		sfc0: sfc0@0x13440000 {
++			compatible = "ingenic,sfc";
++			reg = <0x13440000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_SFC0>;
++			pinctrl-names = "default";
++			pinctrl-0 = <&sfc0_pa>;
++			status = "okay";
++		};
++
++		sfc1: sfc1@0x13450000 {
++			compatible = "ingenic,sfc";
++			reg = <0x13450000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_SFC1>;
++			pinctrl-names = "default";
++			pinctrl-0 = <&sfc1_pa>;
++			status = "okay";
++		};
++
++		pwm: pwm@0x13460000 {
++			compatible = "ingenic,t41-pwm";
++			reg = <0x13460000 0x1000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_PWM>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "okay";
++		};
++
++		hash: hash@0x13480000 {
++			compatible = "ingenic,hash";
++			reg = <0x13480000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_HASH>;
++			status = "disabled";
++		};
++
++		mac0: mac@0x134b0000 {
++			compatible = "ingenic,t41-mac";
++			reg = <0x134b0000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_GMAC0>;
++			status = "okay";
++			ingenic,rst-ms = <10>;
++		};
++
++		rsa: rsa@0x134c0000 {
++			compatible = "ingenic,rsa";
++			reg = <0x134c0000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_RSA>;
++			status = "disabled";
++		};
++
++		dmic: dmic@0x134d0000 {
++			compatible = "ingenic,dmic";
++			reg = <0x134d0000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_DMIC>;
++			status = "disabled";
++		};
++
++		otg: otg@0x13500000 {
++			compatible = "ingenic,dwc2-hsotg";
++			reg = <0x13500000 0x40000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_OTG>;
++			ingenic,usbphy=<&otg_phy>;
++			status = "okay";
++		};
++
++		efuse: efuse@0x13540000 {
++			compatible = "ingenic,t41-efuse";
++			reg = <0x13540000 0x10000>;
++			status = "disabled";
++		};
++	};
++
++	ahb1 {
++		compatible = "simple-bus";
++		#address-cells = <1>;
++		#size-cells = <1>;
++		ranges = <>;
++
++		el200: el200@0x13100000 {
++			compatible = "ingenic,t41-el200";
++			reg = <0x13100000 0x100000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_EL200>;
++			status = "okay";
++		};
++
++		ivdc: ivdc@0x13200000 {
++			compatible = "ingenic,t41-ivdc";
++			reg = <0x13200000 0x7FFFF>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_JPEG>;
++			status = "okay";
++		};
++
++		jpeg: jpeg@0x13280000 {
++			compatible = "ingenic,t41-jpeg";
++			reg = <0x13280000 0x3FFFF>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_JPEG>;
++			status = "okay";
++		};
++
++		lzma0: lzma0@0x132c0000 {
++			compatible = "ingenic,t41-lzma";
++			reg = <0x13c00000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_LZMA>;
++			status = "disabled";
++		};
++
++		lzma1: lzma1@0x132d0000 {
++			compatible = "ingenic,t41-lzma";
++			reg = <0x13d00000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_LZMA>;
++			status = "disabled";
++		};
++	};
++
++	ahb0 {
++		compatible = "simple-bus";
++		#address-cells = <1>;
++		#size-cells = <1>;
++		ranges = <>;
++
++		ldc: ldc@0x13040000 {
++			compatible = "ingenic,t41-ldc";
++			reg = <0x13040000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_LDC>;
++			status = "okay";
++		};
++
++		dpu: dpu@0x13050000 {
++			compatible = "ingenic,t41-dpu";
++			reg = <0x13050000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_LCD>;
++			status = "okay";
++		};
++		msc0: msc@0x13060000 {
++			compatible = "ingenic,sdhci";
++			reg = <0x13060000 0x10000>;
++			status = "okay";
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_MSC0>;
++			pinctrl-names ="default";
++			pinctrl-0 = <&msc0_4bit>;
++		};
++
++		msc1: msc@0x13070000 {
++			compatible = "ingenic,sdhci";
++			reg = <0x13070000 0x10000>;
++			status = "okay";
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_MSC1>;
++			pinctrl-names ="default";
++			pinctrl-0 = <&msc1_4bit>;
++		};
++
++		ipu: ipu@0x13080000 {
++			compatible = "ingenic,t41-ipu";
++			reg = <0x13080000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_IPU>;
++			status = "okay";
++		};
++
++		monitor: monitor@0x130a0000 {
++			compatible = "ingenic,t41-monitor";
++			reg = <0x130a0000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_MON>;
++			status = "disabled";
++		};
++
++		i2d: i2d@0x130b0000 {
++			compatible = "ingenic,t41-i2d";
++			reg = <0x130b0000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_I2D>;
++			status = "okay";
++        };
++
++		vo: vo@0x130c0000 {
++			compatible = "ingenic,t41-vo";
++			reg = <0x130c0000 0x10000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_VO>;
++			status = "disabled";
++		};
++
++		drawbox: drawbox@0x130d0000 {
++			 compatible = "ingenic,t41-drawbox";
++			 reg = <0x130d0000 0x10000>;
++			 interrupt-parent = <&core_intc>;
++			 interrupts = <IRQ_DRAW_BOX>;
++			 status = "okay";
++		};
++
++		isp: isp@0x13300000 {
++			compatible = "ingenic,t41-isp";
++			reg = <0x13300000 0x100000>;
++			interrupt-parent = <&core_intc>;
++			interrupts = <IRQ_ISP>;
++			status = "okay";
++		};
++	};
++};
++#include "t41-pinctrl.dtsi"
+diff --git a/arch/mips/boot/dts/ingenic/t41nq.dts b/arch/mips/boot/dts/ingenic/t41nq.dts
+new file mode 100644
+index 00000000..b4f21d72
+--- /dev/null
++++ b/arch/mips/boot/dts/ingenic/t41nq.dts
+@@ -0,0 +1,279 @@
++/dts-v1/;
++
++#include <dt-bindings/input/input.h>
++#include "t41.dtsi"
++#include <dt-bindings/interrupt-controller/irq.h>
++
++/ {
++	compatible = "ingenic,marmot", "ingenic,t41";
++
++	mmc0_pwrseq: mmc0_pwrseq {
++		compatible = "mmc-pwrseq-simple";
++		reset-gpios = <&gpd 22 GPIO_ACTIVE_LOW INGENIC_GPIO_NOBIAS>;
++	};
++};
++
++&uart0 {
++	status = "disable";
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart0_pc>;
++};
++&uart1 {
++	status = "okay";
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart1_pb>;
++};
++&uart2 {
++	status = "disable";
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart2_pd>;
++};
++&uart3 {
++	status = "disable";
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart3_pb>;
++};
++&uart4 {
++	status = "disable";
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart4_pb>;
++};
++&uart5 {
++	status = "disable";
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart5_pd>;
++};
++
++&i2c0 {
++	pinctrl-0 = <&i2c0_pa>;
++	pinctrl-names = "default";
++	clock-frequency = <400000>;
++	status = "okay";
++};
++&i2c1 {
++	pinctrl-0 = <&i2c1_pb>;
++	pinctrl-names = "default";
++	clock-frequency = <400000>;
++	status = "disable";
++};
++&i2c2 {
++	pinctrl-0 = <&i2c2_pc>;
++	pinctrl-names = "default";
++	clock-frequency = <400000>;
++	status = "disable";
++};
++
++&vo {
++	pinctrl-0 = <&vo_pd>;
++	pinctrl-names = "default";
++	status = "disable";
++};
++
++&cpufreq {
++	status = "okay";
++	operating-points = <
++		/*KHZ uV */
++		1200000	900000
++		1104000	900000
++		1008000	900000
++		912000	900000
++		891000	900000
++		750000	900000
++		600000	900000
++		500000	900000
++		400000	900000
++		375000	900000
++		300000	900000
++		200000	900000
++			>;
++
++};
++
++&pdma {
++	status = "okay";
++};
++
++&msc0 {
++	status = "okay";
++	pinctrl-names = "default";
++	/*mmc-hs200-1_8v;*/
++	cap-mmc-highspeed;
++	max-frequency = <25000000>;
++	bus-width = <4>;
++	voltage-ranges = <1800 3300>;
++
++	/* special property */
++	ingenic,wp-gpios = <0>;
++	ingenic,cd-gpios = <&gpb 26 GPIO_ACTIVE_LOW INGENIC_GPIO_NOBIAS>;
++	cd-inverted;
++	ingenic,rst-gpios = <0>;
++	pinctrl-0 = <&msc0_pb>;
++	//mmc-pwrseq = <&mmc0_pwrseq>;
++};
++
++&msc1 {
++	status = "disable";
++	pinctrl-names = "default";
++	/*mmc-hs200-1_8v;*/
++	cap-mmc-highspeed;
++	max-frequency = <50000000>;
++	bus-width = <4>;
++	voltage-ranges = <1800 3300>;
++	non-removable;
++
++	/* special property */
++	ingenic,wp-gpios = <0>;
++	ingenic,rst-gpios = <0>;
++	pinctrl-0 = <&msc1_pc>;
++};
++
++&mac0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&mac0_rmii_p0_normal>, <&mac0_rmii_p1_normal>;
++	pinctrl-1 = <&mac0_rmii_p0_rst>, <&mac0_rmii_p1_normal>;
++	status = "okay";
++	//ingenic,rst-gpio = <&gpb 28 GPIO_ACTIVE_LOW INGENIC_GPIO_NOBIAS>;
++	ingenic,rst-ms = <10>;
++	ingenic,mac-mode = <RMII>;
++	ingenic,mode-reg = <0xb00000e8>;
++	ingenic,phy-clk-freq = <50000000>;
++};
++
++&sadc {
++	status = "okay";
++};
++
++&sfc0 {
++	status = "okay";
++    pinctrl-names = "default";
++	ingenic,sfc-max-frequency = <100000000>;
++	ingenic,use_board_info      = /bits/ 8 <0>;
++	ingenic,spiflash_param_offset = <0>;
++	ingenic,spiflash_type = <0>;
++	pinctrl-0 = <&sfc0_pa>;
++};
++
++&sfc1 {
++	status = "disable";
++    pinctrl-names = "default";
++	ingenic,sfc-max-frequency = <100000000>;
++	ingenic,use_board_info      = /bits/ 8 <0>;
++	ingenic,spiflash_param_offset = <0>;
++	ingenic,spiflash_type = <1>;
++	pinctrl-0 = <&sfc1_pa>;
++};
++
++&spi0 {
++	status = "disable";
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi0_pa>;
++
++	spi-max-frequency = <50000000>;
++	num-cs = <2>;
++	cs-gpios = <0>, <0>;
++	ingenic,chnl = <0>;
++	ingenic,allow_cs_same = <1>;
++	ingenic,bus_num = <0>;
++	ingenic,has_dma_support = <1>;
++};
++
++&spi1 {
++	status = "okay";
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi1_pa>;
++
++	spi-max-frequency = <50000000>;
++	num-cs = <2>;
++	cs-gpios = <0>, <0>;
++	ingenic,chnl = <1>;
++	ingenic,allow_cs_same = <1>;
++	ingenic,bus_num = <1>;
++	ingenic,has_dma_support = <1>;
++	spidev: spidev@0 {
++		compatible = "ingenic,spidev";
++		reg = <0>;
++		spi-max-frequency = <50000000>;
++	};
++};
++
++&dtrng {
++	status = "disable";
++};
++
++&otg {
++	g-use-dma;
++	dr_mode = "host";
++	status = "okay";
++};
++
++&otg_phy {
++	dr_mode = "host";
++	compatible = "ingenic,innophy", "syscon";
++	ingenic,drvvbus-gpio = <0>;
++	//ingenic,drvvbus-gpio = <&gpb 27 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
++	status = "okay";
++};
++
++/ {
++
++	extclk: extclk {
++		clock-frequency = <24000000>;
++	};
++
++	gpio_keys: gpio_keys {
++		   compatible = "gpio-keys";
++
++                   reset {
++                           label = "reset";
++                           linux,code = <KEY_ENTER>;
++                           gpios = <&gpb 27 GPIO_ACTIVE_LOW INGENIC_GPIO_NOBIAS>;
++                   };
++	   };
++};
++
++&el200 {
++	status = "okay";
++};
++
++&jpeg {
++        status = "okay";
++};
++
++&dpu {
++	status = "disable";
++};
++
++
++/ {
++	display-dbi {
++		compatible = "simple-bus";
++		#interrupt-cells = <1>;
++		#address-cells = <1>;
++		#size-cells = <1>;
++		ranges = <>;
++		panel_truly240240@0 {
++			compatible = "ingenic,truly240240";
++			pinctrl-names = "default";
++			pinctrl-0 = <&smart_lcd_pd>;
++			/*ingenic,rst-gpio = <&gpc 7 GPIO_ACTIVE_LOW INGENIC_GPIO_NOBIAS>;*/
++			ingenic,rst-gpio = <&gpd 9 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
++			ingenic,rd-gpio = <&gpd 12 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
++			ingenic,cs-gpio = <&gpd 10 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
++			status = "disable";
++		};
++
++		panel_st7789v240320@0 {
++			compatible = "ingenic,st7789v240320";
++			pinctrl-names = "default";
++			pinctrl-0 = <&smart_lcd_pd>;
++			/*ingenic,rst-gpio = <&gpc 7 GPIO_ACTIVE_LOW INGENIC_GPIO_NOBIAS>;*/
++			ingenic,rst-gpio = <&gpd 9 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
++			ingenic,rd-gpio = <&gpd 12 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
++			ingenic,cs-gpio = <&gpd 10 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
++			ingenic,bl-gpio = <&gpd 27 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
++			status = "disable";
++		};
++
++	};
++};
++
+diff --git a/include/dt-bindings/interrupt-controller/t41-irq.h b/include/dt-bindings/interrupt-controller/t41-irq.h
+new file mode 100644
+index 00000000..d6748cd4
+--- /dev/null
++++ b/include/dt-bindings/interrupt-controller/t41-irq.h
+@@ -0,0 +1,73 @@
++#ifndef _DT_BINDINGS_INTERRUPT_CONTROLLER_T41_IRQ_H
++#define _DT_BINDINGS_INTERRUPT_CONTROLLER_T41_IRQ_H
++
++#include <dt-bindings/interrupt-controller/mips-irq.h>
++
++#define IRQ_JPEG			(0)
++#define IRQ_AIC0			(1)
++#define IRQ_SYS_LEP			(2)   /* RISC-V */
++#define IRQ_RTC     			(3)
++#define IRQ_LZMA    			(4)
++#define IRQ_MIPI_RX_2L			(5)
++#define IRQ_IPU				(6)
++#define IRQ_SFC0			(7)
++#define IRQ_SSI1			(8)
++#define IRQ_SSI0			(9)
++#define IRQ_PDMA			(10)
++#define IRQ_SSISLV			(11)
++#define IRQ_RESERVED12			(12)
++#define IRQ_IVDC			(13)
++#define IRQ_GPIO3			(14)
++#define IRQ_GPIO2			(15)
++#define IRQ_GPIO1			(16)
++#define IRQ_GPIO0			(17)
++#define IRQ_GPIO_PORT(N) (IRQ_GPIO0 - (N))
++#define IRQ_SADC			(18)
++#define IRQ_SFC1			(19)
++#define IRQ_LCD				(20)
++#define IRQ_OTG				(21)
++#define IRQ_HASH			(22)
++#define IRQ_AES				(23)
++#define IRQ_RSA				(24)
++#define IRQ_TCU2			(25)
++#define IRQ_TCU1			(26)
++#define IRQ_TCU0			(27)
++#define IRQ_RESERVED28			(28)
++#define IRQ_RESERVED29			(29)
++#define IRQ_S0_VIC			(30)
++#define IRQ_ISP				(31)
++
++#define IRQ_RESERVED32			(32 + 0)
++#define IRQ_DMIC			(32 + 1)
++#define IRQ_DTRNG			(32 + 2)
++#define IRQ_LDC				(32 + 3)
++#define IRQ_MSC1			(32 + 4)
++#define IRQ_MSC0			(32 + 5)
++#define IRQ_AIP2			(32 + 6)
++#define IRQ_AIP1			(32 + 7)
++#define IRQ_AIP0			(32 + 8)
++#define IRQ_DDR_DWU			(32 + 9)
++#define IRQ_DRAW_BOX			(32 + 10)
++#define IRQ_VO				(32 + 11)
++#define IRQ_HARB2			(32 + 12)
++#define IRQ_I2D				(32 + 13)
++#define IRQ_RESERVED46			(32 + 14)
++#define IRQ_CPM				(32 + 15)
++#define IRQ_UART3			(32 + 16)
++#define IRQ_UART2			(32 + 17)
++#define IRQ_UART1			(32 + 18)
++#define IRQ_UART0			(32 + 19)
++#define IRQ_DDR				(32 + 20)
++#define IRQ_MON				(32 + 21)
++#define IRQ_EFUSE			(32 + 22)
++#define IRQ_GMAC0			(32 + 23)
++#define IRQ_UART5			(32 + 24)
++#define IRQ_UART4			(32 + 25)
++#define IRQ_I2C2			(32 + 26)
++#define IRQ_I2C1			(32 + 27)
++#define IRQ_I2C0			(32 + 28)
++#define IRQ_PDMAM			(32 + 29)
++#define IRQ_EL200			(32 + 30)
++#define IRQ_PWM				(32 + 31)
++
++#endif

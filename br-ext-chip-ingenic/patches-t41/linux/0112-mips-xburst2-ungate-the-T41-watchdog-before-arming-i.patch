@@ -1,0 +1,39 @@
+From 0f2239314c67ff8e9ebf1f1e14a3785ac1d4d4c4 Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Tue, 28 Jul 2026 19:16:25 +0000
+Subject: [PATCH] mips: xburst2: ungate the T41 watchdog before arming it for
+ reboot
+
+jz_wdt_restart() arms the watchdog and then waits for the reset that
+follows. On T41 that reset never arrives: the TCU leaves the watchdog
+clock stopped, so the counter loaded by wdt_start_count() never
+advances. The machine hangs in the fallback loop, printing "check
+wdt." forever, and the camera has to be power-cycled.
+
+Clear the WDT stop bit before programming the timer. wdt_stop_count()
+in the same file and ingenic_wdt.c both already drive bit 16 of the
+TCU stop registers for exactly this purpose.
+---
+ arch/mips/xburst2/soc-t41/reset.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/arch/mips/xburst2/soc-t41/reset.c b/arch/mips/xburst2/soc-t41/reset.c
+index 05490345..2a2a4ff8 100644
+--- a/arch/mips/xburst2/soc-t41/reset.c
++++ b/arch/mips/xburst2/soc-t41/reset.c
+@@ -64,6 +64,15 @@ static void wdt_start_count(int msecs)
+ 	if(time > 65535)
+ 		time = 65535;
+ 
++	/*
++	 * Ungate the watchdog before arming it. The TCU leaves the WDT clock
++	 * stopped, so without this the counter never advances, the reset never
++	 * arrives, and jz_wdt_restart() spins printing "check wdt." forever.
++	 * wdt_stop_count() below already pokes the same bit, as does
++	 * drivers/watchdog/ingenic_wdt.c.
++	 */
++	outl(1 << 16,TCU_IOBASE + TCU_TSCR);
++
+ 	outl(0,WDT_IOBASE + WDT_TCER);
+ 
+ 	outl(1 << 10, WDT_IOBASE + WDT_TCSR);

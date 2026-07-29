@@ -1,0 +1,60 @@
+From 20393bacd44314c4832f76017b0f1ec50e458514 Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Wed, 29 Jul 2026 00:17:47 +0000
+Subject: [PATCH] hw_random: ingenic: wait for the generator instead of
+ returning empty
+
+The read callback ignores its wait argument: if the status bit is not
+already set it returns zero bytes and gives up. The hwrng core's fill
+thread - the part that actually feeds the entropy pool - always asks
+with wait set, so it received nothing and logged "hwrng: no data
+available" every ten seconds while the pool stayed empty.
+
+The generator itself is fine; .init enables it and the status bit does
+come up. It simply needs to be given a moment, so poll it for up to 20ms
+when the caller is willing to wait, and keep the old immediate return
+for callers that are not.
+
+Also refuse buffers smaller than the word this writes, which the
+original never checked.
+---
+ drivers/char/hw_random/ingenic-rng.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/drivers/char/hw_random/ingenic-rng.c b/drivers/char/hw_random/ingenic-rng.c
+index 207b868b..f901082e 100644
+--- a/drivers/char/hw_random/ingenic-rng.c
++++ b/drivers/char/hw_random/ingenic-rng.c
+@@ -23,6 +23,7 @@
+  */
+ 
+ 
++#include <linux/delay.h>
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/slab.h>
+@@ -111,6 +112,24 @@ static int ingenic_trng_read(struct hwrng *rng, void *buf, size_t max,
+ 	unsigned int trng_cfg;
+ 	u32 val,tmp_data;
+ 	u32 *data = buf;
++	int timeout = 200;	/* 200 x 100us = 20ms, generous for this block */
++
++	if (max < sizeof(u32))
++		return 0;
++
++	/*
++	 * Honour the wait flag. Without this the hwrng core's fill thread -
++	 * the thing that actually contributes to the entropy pool - gets a
++	 * bare zero whenever the block has not finished a word yet, and logs
++	 * "hwrng: no data available" once every ten seconds forever while the
++	 * pool stays empty. The generator is enabled in .init and does produce
++	 * data; it just needs to be given a moment.
++	 */
++	while (!(readl(trng->base + TRNG_STATUS) & 1)) {
++		if (!wait || !--timeout)
++			return 0;
++		udelay(100);
++	}
+ 
+ 	/* data ready? */
+ 	if (readl(trng->base + TRNG_STATUS) & 1) {

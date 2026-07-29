@@ -1,0 +1,59 @@
+From f4e42a216b157c792228b405b1cc778205b12736 Mon Sep 17 00:00:00 2001
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Date: Tue, 28 Jul 2026 14:53:10 +0000
+Subject: [PATCH 109/111] mips: xburst2: expose CONFIG_KERNEL_4_4_94 for
+ out-of-tree T41 drivers
+
+Nothing in this tree reads this symbol, which is exactly why it is easy
+to leave out. It exists so that out-of-tree Ingenic drivers can see the
+kernel version through autoconf.h.
+
+openipc/openingenic, built by the ingenic-opensdk package, needs it on
+T41. isp/t41/include/sensor-common.h picks the clock names with it:
+
+    #ifdef CONFIG_KERNEL_4_4_94
+    #define SEN_TCLK "vpll"
+    #define SEN_MCLK "mux_cim"
+    #define SEN_BCLK "div_cim"
+    #endif
+
+which are precisely the names clk-t41.c provides, and vpll rather than
+epll because T41 has no EPLL - only APLL, MPLL and VPLL, and VPLL is a
+valid mux_cim parent that divides to exactly 27 MHz. Ten files across
+isp, audio and sinfo test the symbol. Without it those headers define
+nothing at all and the sensor driver does not build.
+
+The T40 side of that SDK never reads it - t40's sensor-common.h has no
+such guards, and sinfo's uses sit inside #ifdef CONFIG_SOC_T41 - so this
+is scoped to SOC_T41 and no other SoC is affected.
+---
+ arch/mips/xburst2/Kconfig | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/arch/mips/xburst2/Kconfig b/arch/mips/xburst2/Kconfig
+index 1414ad2f..802dd58e 100644
+--- a/arch/mips/xburst2/Kconfig
++++ b/arch/mips/xburst2/Kconfig
+@@ -78,6 +78,22 @@ config DT_T40_MODULE_BASE_DTS_FILE
+ 	help
+ 		the dts file location is arch/mips/boot/dts/ingenic/
+ 
++config KERNEL_4_4_94
++	bool
++	depends on SOC_T41
++	default y
++	help
++	  Exposes the kernel version to out-of-tree Ingenic driver builds
++	  through autoconf.h. Nothing in this tree reads it.
++
++	  openipc/openingenic - the SDK built by the ingenic-opensdk package -
++	  selects T41 clock names with it, in isp/t41/include/sensor-common.h
++	  (SEN_MCLK "mux_cim", SEN_BCLK "div_cim", SEN_TCLK "vpll") and in
++	  sinfo, audio and tx-isp. Without it those headers define nothing and
++	  the sensor driver fails to build.
++
++	  Scoped to SOC_T41 because no T40 path in that SDK reads it.
++
+ config RAW_BOOT
+ 	bool "Raw Boot Kernel"
+ 	select BOOT_RAW
