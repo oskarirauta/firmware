@@ -134,6 +134,20 @@ if [ $? -ne 0 ]; then
 	check_return "insmod gpio"
 fi
 
+# majestic reads the ambient-light ADC from /dev/jz_adc_aux_0 - the name the
+# older vendor driver used - while the driver in this kernel registers itself as
+# ingenic_adc_aux_%d. So "adcReadout: true" fails with
+#
+#   Cannot open adc path: /dev/jz_adc_aux_0
+#
+# on every camera, including the ones that do have a photoresistor fitted, which
+# is part of why automatic day/night looked impossible here. A symlink is enough,
+# and is preferable to renaming the device: the driver's name matches the rest of
+# the tree, and anything already using it keeps working.
+if [ -e /dev/ingenic_adc_aux_0 ] && [ ! -e /dev/jz_adc_aux_0 ]; then
+	ln -sf /dev/ingenic_adc_aux_0 /dev/jz_adc_aux_0
+fi
+
 # The GPIO claims come from majestic's configuration, so there is nothing to
 # claim before majestic is installed. Without this guard cli prints
 # "Failed to open input file /etc/majestic.yaml" once per GPIO at every boot.

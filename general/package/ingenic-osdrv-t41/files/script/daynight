@@ -119,13 +119,101 @@ isp() {
 	fi
 }
 
-status() {
-	printf 'mode      : '
-	if [ -r "$ISP_DAYNIGHT" ]; then
-		[ "$(cat "$ISP_DAYNIGHT")" = 1 ] && echo night || echo day
-	else
-		echo "unknown (no $ISP_DAYNIGHT)"
+# The ambient-light reading. Channel 0 is where the photoresistor sits, and the
+# driver hands back a binary unsigned long rather than text, so od converts it.
+#
+# POLARITY IS A CONTRACT: everything here assumes **higher means brighter**. That
+# is how this camera reads - measured by pointing a lamp at it and watching the
+# value rise. A board wired the other way round is normalised in the driver, not
+# here: ingenic_adc_aux takes an `invert` parameter which returns
+# (invert - reading), so setting it to just above full scale flips a
+# bright-is-low sensor into this convention and leaves the thresholds meaningful.
+#
+# The reading is noisy - a stable scene wanders over tens of units, and the raw
+# ADC step is about 4.3 of them - so a single sample must never decide anything.
+ADC=/dev/ingenic_adc_aux_0
+ADC_SAMPLES=9
+
+adc_read() {
+	[ -r "$ADC" ] || return 1
+	od -An -tu4 -N4 "$ADC" 2>/dev/null | tr -d ' \n'
+}
+
+# The median of several samples, not the mean: one wild reading shifts a mean but
+# cannot move a median, and wild readings are exactly what this sensor produces.
+adc_level() {
+	[ -r "$ADC" ] || return 1
+	i=0
+	while [ $i -lt $ADC_SAMPLES ]; do
+		adc_read
+		echo
+		i=$((i + 1))
+	done | sort -n | sed -n "$(( (ADC_SAMPLES + 1) / 2 ))p"
+}
+
+# Decide from the light level. Two thresholds rather than one, with a dead band
+# between them, so a value sitting near the boundary cannot throw the filter back
+# and forth - each crossing costs a solenoid pulse and a visible jump in the
+# picture. Both are overridable from the U-Boot environment, because the right
+# numbers depend on the lens, the housing and where the camera is pointed.
+#
+# They are MANDATORY, with no defaults, and that is the safety property rather
+# than an omission. A camera whose photoresistor is not fitted reads a steady
+# near-zero - measured on this one, 4 to 35 units, which is 1 to 8 raw counts of
+# 4096 and does not move when the room lights go out. A working sensor spans
+# almost the whole 18000-unit scale. Any built-in threshold would therefore read
+# an absent sensor as pitch darkness and drive the camera to night in daylight,
+# which is exactly what a first attempt with invented defaults did.
+auto() {
+	value=$(adc_level)
+	case "$value" in
+	''|*[!0-9]*)
+		die "no usable reading from $ADC - is a light sensor fitted?"
+		;;
+	esac
+
+	night_below=$(env_get dn_night_below)
+	day_above=$(env_get dn_day_above)
+	if [ -z "$night_below" ] || [ -z "$day_above" ]; then
+		die "auto needs thresholds: set dn_night_below and dn_day_above with
+       fw_setenv, after reading the light with '$(basename "$0") adc' in the
+       dark and in daylight. There are deliberately no defaults - a camera
+       with no photoresistor fitted reads a steady near-zero, which any
+       default would read as pitch darkness and switch to night at noon."
 	fi
+
+	now=$(current_mode)
+	if [ "$value" -lt "$night_below" ]; then
+		want=night
+	elif [ "$value" -gt "$day_above" ]; then
+		want=day
+	else
+		want=$now		# in the dead band: leave it where it is
+	fi
+
+	[ "$want" = "$now" ] && return 0
+	MODE=$want
+	ircut
+	illuminator
+	isp
+	echo "daynight: light $value -> $want"
+}
+
+current_mode() {
+	if [ -r "$ISP_DAYNIGHT" ] && [ "$(cat "$ISP_DAYNIGHT")" = 1 ]; then
+		echo night
+	else
+		echo day
+	fi
+}
+
+status() {
+	if [ -r "$ISP_DAYNIGHT" ]; then
+		printf 'mode      : %s\n' "$(current_mode)"
+	else
+		printf 'mode      : unknown (no %s)\n' "$ISP_DAYNIGHT"
+	fi
+	printf 'light     : %s\n' "$(adc_level || echo 'no sensor')"
 	printf 'ircut pins: %s\n' "$(env_get gpio_ircut || echo unset)"
 	printf 'ir850 pin : %s\n' "$(env_get gpio_ir850 || echo unset)"
 }
@@ -137,11 +225,17 @@ day|night)
 	illuminator
 	isp
 	;;
+auto)
+	auto
+	;;
+adc)
+	adc_level || die "no reading from $ADC"
+	;;
 status)
 	status
 	;;
 *)
-	echo "usage: $(basename "$0") day|night|status" >&2
+	echo "usage: $(basename "$0") day|night|auto|adc|status" >&2
 	exit 2
 	;;
 esac
