@@ -1,0 +1,113 @@
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Subject: [PATCH] isvp-t41: write the default environment to flash on first boot
+
+A board flashed for the first time has a blank environment sector. U-Boot copes
+on its own - it falls back to the environment compiled into it - but that
+fallback lives only in RAM, and Linux does not read it. fw_printenv goes to the
+MTD device, finds a bad CRC there, and quietly answers from its own
+three-variable default:
+
+    Warning: Bad CRC, using default environment
+    bootcmd=bootp; setenv bootargs root=/dev/nfs ...
+    bootdelay=5
+    baudrate=115200
+
+So every lookup the startup scripts make - soc, sensor, osmem, totalmem - comes
+back empty, and the camera boots but comes up without video. Nothing in the log
+points at the environment, because from userspace's point of view there simply
+is one.
+
+Writing the defaults out the first time they are used fixes it at the source:
+one copy of the truth, in the .env file, reaching both U-Boot and Linux. It also
+repairs a sector whose contents have been corrupted. Afterwards the environment
+loads from flash, GD_FLG_ENV_DEFAULT is clear, and this is a no-op.
+
+board_late_init() is made unconditional and the pad-init call moved inside it,
+so the two features no longer depend on each other being enabled.
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+---
+--- a/board/ingenic/isvp-t41/isvp-t41.c
++++ b/board/ingenic/isvp-t41/isvp-t41.c
+@@ -9,6 +9,7 @@
+  */
+ 
+ #include <dm.h>
++#include <env.h>
+ #include <init.h>
+ #include <ram.h>
+ #include <stdio.h>
+@@ -217,20 +218,42 @@
+ 	return 0;
+ }
+ 
+-#ifdef CONFIG_T41_VENDOR_PAD_INIT
+-/*
+- * Re-apply the vendor CPM state after all of U-Boot proper's own
+- * driver probing: the DM clk/mmc path re-dirties MSC0CDR (stale
+- * CE + divider) after board_init(), and Linux inherits whatever is
+- * left here. board_late_init() is the last hook before autoboot;
+- * the boot command itself (sf read + bootm) touches no clocks.
+- */
+ int board_late_init(void)
+ {
++#ifdef CONFIG_T41_VENDOR_PAD_INIT
++	/*
++	 * Re-apply the vendor CPM state after all of U-Boot proper's own
++	 * driver probing: the DM clk/mmc path re-dirties MSC0CDR (stale
++	 * CE + divider) after board_init(), and Linux inherits whatever is
++	 * left here. This is the last hook before autoboot; the boot
++	 * command itself (sf read + bootm) touches no clocks.
++	 */
+ 	t41_vendor_cpm_state();
++#endif
++
++#ifdef CONFIG_T41_SAVE_DEFAULT_ENV
++	/*
++	 * A board flashed for the first time has a blank environment sector.
++	 * U-Boot copes on its own - it falls back to the environment compiled
++	 * into this binary - but that fallback lives only in RAM, while Linux
++	 * reads the environment straight off the MTD device. fw_printenv finds
++	 * a bad CRC there and quietly answers from its own three-variable
++	 * default instead, so the startup scripts get nothing for soc, sensor
++	 * or totalmem and the camera comes up without video, with no error that
++	 * points at the cause.
++	 *
++	 * So write the defaults out the first time they are used. Afterwards
++	 * the environment loads from flash, the flag is clear and this is a
++	 * no-op. It also repairs a sector that has been corrupted.
++	 */
++	if (gd->flags & GD_FLG_ENV_DEFAULT) {
++		printf("Env:   none in flash, saving the built-in default\n");
++		env_save();
++	}
++#endif
++
+ 	return 0;
+ }
+-#endif
+ 
+ int checkboard(void)
+ {
+--- a/arch/mips/mach-xburst/t41/Kconfig
++++ b/arch/mips/mach-xburst/t41/Kconfig
+@@ -42,4 +42,19 @@
+ 	  initialise. Harmless but board-specific; leave disabled for
+ 	  other T41 boards.
+ 
++config T41_SAVE_DEFAULT_ENV
++	bool "Write the built-in default environment to flash on first boot"
++	select BOARD_LATE_INIT
++	default y
++	help
++	  When the environment sector is blank or its CRC is bad, U-Boot
++	  falls back to the environment compiled into it - but only in
++	  RAM. Linux reads the environment from the MTD device instead,
++	  so on a freshly flashed board it sees nothing, and userspace
++	  that looks up soc or sensor there comes up misconfigured.
++
++	  With this enabled the defaults are written out once, the first
++	  time they are used, which also repairs a corrupted sector. Say
++	  n only if the board must never write its own environment.
++
+ endif
