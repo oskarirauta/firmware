@@ -681,7 +681,7 @@ diff -Naur --no-dereference u-boot-2026.07/arch/mips/dts/a1n-isvp-u-boot.dtsi tr
 +};
 diff -Naur --no-dereference u-boot-2026.07/arch/mips/dts/Makefile trim-tree/arch/mips/dts/Makefile
 --- u-boot-2026.07/arch/mips/dts/Makefile	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/arch/mips/dts/Makefile	2026-07-29 18:19:53.820810618 +0000
++++ trim-tree/arch/mips/dts/Makefile	2026-07-29 18:38:06.383859051 +0000
 @@ -30,6 +30,29 @@
  dtb-$(CONFIG_BOARD_TPLINK_WDR4300) += tplink_wdr4300.dtb
  dtb-$(CONFIG_BOARD_VOCORE2) += vocore_vocore2.dtb
@@ -10373,7 +10373,7 @@ diff -Naur --no-dereference u-boot-2026.07/arch/mips/include/asm/u-boot-mips.h t
  
 diff -Naur --no-dereference u-boot-2026.07/arch/mips/Kconfig trim-tree/arch/mips/Kconfig
 --- u-boot-2026.07/arch/mips/Kconfig	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/arch/mips/Kconfig	2026-07-29 18:19:53.820810618 +0000
++++ trim-tree/arch/mips/Kconfig	2026-07-29 18:38:06.383859051 +0000
 @@ -95,6 +95,27 @@
  	select OF_CONTROL
  	select DM
@@ -24164,7 +24164,7 @@ diff -Naur --no-dereference u-boot-2026.07/arch/mips/mach-xburst/tpl.c trim-tree
 +}
 diff -Naur --no-dereference u-boot-2026.07/arch/mips/Makefile trim-tree/arch/mips/Makefile
 --- u-boot-2026.07/arch/mips/Makefile	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/arch/mips/Makefile	2026-07-29 18:19:53.820810618 +0000
++++ trim-tree/arch/mips/Makefile	2026-07-29 18:38:06.383859051 +0000
 @@ -4,6 +4,7 @@
  
  ifeq ($(CONFIG_XPL_BUILD),y)
@@ -26570,7 +26570,7 @@ diff -Naur --no-dereference u-boot-2026.07/board/ingenic/isvp-t41/Makefile trim-
 +obj-y	+= isvp-t41.o
 diff -Naur --no-dereference u-boot-2026.07/common/spl/Kconfig trim-tree/common/spl/Kconfig
 --- u-boot-2026.07/common/spl/Kconfig	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/common/spl/Kconfig	2026-07-29 18:19:53.870811209 +0000
++++ trim-tree/common/spl/Kconfig	2026-07-29 18:38:06.423859529 +0000
 @@ -388,7 +388,7 @@
  
  config SPL_SHARES_INIT_SP_ADDR
@@ -44909,7 +44909,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/clk/ingenic/Makefile trim-tre
 +obj-$(CONFIG_CLK_INGENIC_T41) += clk-t41.o
 diff -Naur --no-dereference u-boot-2026.07/drivers/clk/Kconfig trim-tree/drivers/clk/Kconfig
 --- u-boot-2026.07/drivers/clk/Kconfig	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/clk/Kconfig	2026-07-29 18:19:53.900811565 +0000
++++ trim-tree/drivers/clk/Kconfig	2026-07-29 18:38:06.453859887 +0000
 @@ -271,6 +271,7 @@
  source "drivers/clk/at91/Kconfig"
  source "drivers/clk/exynos/Kconfig"
@@ -44920,7 +44920,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/clk/Kconfig trim-tree/drivers
  source "drivers/clk/mvebu/Kconfig"
 diff -Naur --no-dereference u-boot-2026.07/drivers/clk/Makefile trim-tree/drivers/clk/Makefile
 --- u-boot-2026.07/drivers/clk/Makefile	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/clk/Makefile	2026-07-29 18:19:53.900811565 +0000
++++ trim-tree/drivers/clk/Makefile	2026-07-29 18:38:06.453859887 +0000
 @@ -16,7 +16,8 @@
  obj-y += adi/
  obj-y += airoha/
@@ -44933,7 +44933,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/clk/Makefile trim-tree/driver
  obj-y += ti/
 diff -Naur --no-dereference u-boot-2026.07/drivers/dfu/dfu_mmc.c trim-tree/drivers/dfu/dfu_mmc.c
 --- u-boot-2026.07/drivers/dfu/dfu_mmc.c	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/dfu/dfu_mmc.c	2026-07-29 18:19:53.960812275 +0000
++++ trim-tree/drivers/dfu/dfu_mmc.c	2026-07-29 18:38:06.533860843 +0000
 @@ -62,16 +62,33 @@
  	debug("%s: %s dev: %d start: %d cnt: %d buf: 0x%p\n", __func__,
  	      op == DFU_OP_READ ? "MMC READ" : "MMC WRITE",
@@ -45082,7 +45082,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/mmc/ingenic_sdhci.c trim-tree
 +};
 diff -Naur --no-dereference u-boot-2026.07/drivers/mmc/jz_mmc.c trim-tree/drivers/mmc/jz_mmc.c
 --- u-boot-2026.07/drivers/mmc/jz_mmc.c	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/mmc/jz_mmc.c	2026-07-29 18:19:53.960812275 +0000
++++ trim-tree/drivers/mmc/jz_mmc.c	2026-07-29 18:38:06.533860843 +0000
 @@ -7,14 +7,20 @@
   */
  
@@ -45423,7 +45423,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/mmc/jz_mmc.c trim-tree/driver
  
 diff -Naur --no-dereference u-boot-2026.07/drivers/mmc/Kconfig trim-tree/drivers/mmc/Kconfig
 --- u-boot-2026.07/drivers/mmc/Kconfig	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/mmc/Kconfig	2026-07-29 18:19:53.910811683 +0000
++++ trim-tree/drivers/mmc/Kconfig	2026-07-29 18:38:06.473860127 +0000
 @@ -456,9 +456,19 @@
  
  config JZ47XX_MMC
@@ -45448,7 +45448,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/mmc/Kconfig trim-tree/drivers
  	bool "Sandbox MMC support"
 diff -Naur --no-dereference u-boot-2026.07/drivers/mmc/Makefile trim-tree/drivers/mmc/Makefile
 --- u-boot-2026.07/drivers/mmc/Makefile	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/mmc/Makefile	2026-07-29 18:19:53.910811683 +0000
++++ trim-tree/drivers/mmc/Makefile	2026-07-29 18:38:06.473860127 +0000
 @@ -50,6 +50,7 @@
  obj-$(CONFIG_SH_MMCIF) += sh_mmcif.o
  obj-$(CONFIG_STM32_SDMMC2) += stm32_sdmmc2.o
@@ -45796,9 +45796,306 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/mtd/spi/spi-nor-ids.c trim-tr
  #endif
  	{ },
  };
+diff -Naur --no-dereference u-boot-2026.07/drivers/net/designware.c trim-tree/drivers/net/designware.c
+--- u-boot-2026.07/drivers/net/designware.c	2026-07-06 23:50:43.000000000 +0000
++++ trim-tree/drivers/net/designware.c	2026-07-29 18:08:20.512608970 +0000
+@@ -366,20 +366,93 @@
+ }
+ #endif
+ 
++/*
++ * The descriptor ring and packet buffers live in the driver's priv
++ * structure, i.e. at a CPU virtual address. The GMAC is a separate bus
++ * master and must be programmed with the matching physical (then bus)
++ * address. On architectures where the CPU virtual address differs from
++ * the physical address (notably MIPS KSEG0) omitting this translation
++ * points the DMA engine at nonexistent memory, so no frames are sent
++ * or received even though the link is up. virt_to_phys()/phys_to_virt()
++ * are identity on the architectures where this already worked.
++ */
++static dma_addr_t dw_dma_map(struct udevice *dev, void *vaddr)
++{
++	return dev_phys_to_bus(dev, virt_to_phys(vaddr));
++}
++
++static void *dw_dma_unmap(struct udevice *dev, dma_addr_t baddr)
++{
++	return phys_to_virt(dev_bus_to_phys(dev, baddr));
++}
++
++/*
++ * The DMA descriptors are 16 bytes, so two share a 32-byte cache line.
++ * The per-descriptor flush/invalidate then also touches the neighbour,
++ * and on MIPS the GMAC's writeback of the OWN bit is never seen by the
++ * (cached) CPU read - the link is up but no frame is ever consumed.
++ * Access the descriptor ring through an uncached mapping instead, as
++ * the vendor driver does; the cache maintenance on the ring is then
++ * unnecessary and is skipped (DW_DESC_UNCACHED). The packet buffers are
++ * unaffected and keep their explicit flush/invalidate. Identity and
++ * unchanged on architectures other than MIPS.
++ */
++#ifdef CONFIG_MIPS
++#define DW_DESC_UNCACHED 1
++static inline void *dw_desc_va(void *p)
++{
++	return (void *)CKSEG1ADDR(virt_to_phys(p));
++}
++#else
++#define DW_DESC_UNCACHED 0
++static inline void *dw_desc_va(void *p)
++{
++	return p;
++}
++#endif
++
++static inline void dw_desc_inval(ulong start, ulong end)
++{
++	if (!DW_DESC_UNCACHED)
++		invalidate_dcache_range(start, end);
++}
++
++static inline void dw_desc_flush(ulong start, ulong end)
++{
++	if (!DW_DESC_UNCACHED)
++		flush_dcache_range(start, end);
++}
++
++/*
++ * priv (hence the descriptor ring) is zeroed through the cached mapping
++ * at allocation. When the ring is then used uncached, drop those stale
++ * cache lines first so a later eviction cannot write zeros back over the
++ * descriptors in DRAM. No-op where the ring stays cached.
++ */
++static inline void dw_desc_prep(ulong start, ulong end)
++{
++	if (DW_DESC_UNCACHED)
++		invalidate_dcache_range(start, end);
++}
++
+ static void tx_descs_init(struct dw_eth_dev *priv)
+ {
+ 	struct eth_dma_regs *dma_p = priv->dma_regs_p;
+-	struct dmamacdescr *desc_table_p = &priv->tx_mac_descrtable[0];
++	struct dmamacdescr *desc_table_p = dw_desc_va(&priv->tx_mac_descrtable[0]);
+ 	char *txbuffs = &priv->txbuffs[0];
+ 	struct dmamacdescr *desc_p;
+ 	u32 idx;
+ 
++	dw_desc_prep((ulong)priv->tx_mac_descrtable,
++		     (ulong)priv->tx_mac_descrtable +
++		     sizeof(priv->tx_mac_descrtable));
++
+ 	for (idx = 0; idx < CFG_TX_DESCR_NUM; idx++) {
+ 		desc_p = &desc_table_p[idx];
+-		desc_p->dmamac_addr = dev_phys_to_bus(priv->dev,
+-				(ulong)&txbuffs[idx * CFG_ETH_BUFSIZE]);
+-		desc_p->dmamac_next = dev_phys_to_bus(priv->dev,
+-				(ulong)&desc_table_p[idx + 1]);
++		desc_p->dmamac_addr = dw_dma_map(priv->dev,
++				&txbuffs[idx * CFG_ETH_BUFSIZE]);
++		desc_p->dmamac_next = dw_dma_map(priv->dev,
++				&desc_table_p[idx + 1]);
+ 
+ #if defined(CONFIG_DW_ALTDESCRIPTOR)
+ 		desc_p->txrx_status &= ~(DESC_TXSTS_TXINT | DESC_TXSTS_TXLAST |
+@@ -397,14 +470,14 @@
+ 	}
+ 
+ 	/* Correcting the last pointer of the chain */
+-	desc_p->dmamac_next = dev_phys_to_bus(priv->dev, (ulong)&desc_table_p[0]);
++	desc_p->dmamac_next = dw_dma_map(priv->dev, &desc_table_p[0]);
+ 
+ 	/* Flush all Tx buffer descriptors at once */
+-	flush_dcache_range((ulong)priv->tx_mac_descrtable,
+-			   (ulong)priv->tx_mac_descrtable +
+-			   sizeof(priv->tx_mac_descrtable));
++	dw_desc_flush((ulong)priv->tx_mac_descrtable,
++		      (ulong)priv->tx_mac_descrtable +
++		      sizeof(priv->tx_mac_descrtable));
+ 
+-	writel(dev_phys_to_bus(priv->dev, (ulong)&desc_table_p[0]),
++	writel(dw_dma_map(priv->dev, &desc_table_p[0]),
+ 			&dma_p->txdesclistaddr);
+ 	priv->tx_currdescnum = 0;
+ }
+@@ -412,7 +485,7 @@
+ static void rx_descs_init(struct dw_eth_dev *priv)
+ {
+ 	struct eth_dma_regs *dma_p = priv->dma_regs_p;
+-	struct dmamacdescr *desc_table_p = &priv->rx_mac_descrtable[0];
++	struct dmamacdescr *desc_table_p = dw_desc_va(&priv->rx_mac_descrtable[0]);
+ 	char *rxbuffs = &priv->rxbuffs[0];
+ 	struct dmamacdescr *desc_p;
+ 	u32 idx;
+@@ -425,12 +498,16 @@
+ 	 * GMAC data will be corrupted. */
+ 	flush_dcache_range((ulong)rxbuffs, (ulong)rxbuffs + RX_TOTAL_BUFSIZE);
+ 
++	dw_desc_prep((ulong)priv->rx_mac_descrtable,
++		     (ulong)priv->rx_mac_descrtable +
++		     sizeof(priv->rx_mac_descrtable));
++
+ 	for (idx = 0; idx < CFG_RX_DESCR_NUM; idx++) {
+ 		desc_p = &desc_table_p[idx];
+-		desc_p->dmamac_addr = dev_phys_to_bus(priv->dev,
+-				(ulong)&rxbuffs[idx * CFG_ETH_BUFSIZE]);
+-		desc_p->dmamac_next = dev_phys_to_bus(priv->dev,
+-				(ulong)&desc_table_p[idx + 1]);
++		desc_p->dmamac_addr = dw_dma_map(priv->dev,
++				&rxbuffs[idx * CFG_ETH_BUFSIZE]);
++		desc_p->dmamac_next = dw_dma_map(priv->dev,
++				&desc_table_p[idx + 1]);
+ 
+ 		desc_p->dmamac_cntl =
+ 			(MAC_MAX_FRAME_SZ & DESC_RXCTRL_SIZE1MASK) |
+@@ -440,14 +517,14 @@
+ 	}
+ 
+ 	/* Correcting the last pointer of the chain */
+-	desc_p->dmamac_next = dev_phys_to_bus(priv->dev, (ulong)&desc_table_p[0]);
++	desc_p->dmamac_next = dw_dma_map(priv->dev, &desc_table_p[0]);
+ 
+ 	/* Flush all Rx buffer descriptors at once */
+-	flush_dcache_range((ulong)priv->rx_mac_descrtable,
+-			   (ulong)priv->rx_mac_descrtable +
+-			   sizeof(priv->rx_mac_descrtable));
++	dw_desc_flush((ulong)priv->rx_mac_descrtable,
++		      (ulong)priv->rx_mac_descrtable +
++		      sizeof(priv->rx_mac_descrtable));
+ 
+-	writel(dev_phys_to_bus(priv->dev, (ulong)&desc_table_p[0]),
++	writel(dw_dma_map(priv->dev, &desc_table_p[0]),
+ 			&dma_p->rxdesclistaddr);
+ 	priv->rx_currdescnum = 0;
+ }
+@@ -575,7 +652,11 @@
+ 	rx_descs_init(priv);
+ 	tx_descs_init(priv);
+ 
+-	writel(FIXEDBURST | PRIORXTX_41 | DMA_PBL, &dma_p->busmode);
++	writel(FIXEDBURST | PRIORXTX_41 | DMA_PBL |
++#if defined(CONFIG_DW_ALTDESCRIPTOR)
++	       DMA_ATDS |
++#endif
++	       0, &dma_p->busmode);
+ 
+ #ifndef CONFIG_DW_MAC_FORCE_THRESHOLD_MODE
+ 	writel(readl(&dma_p->opmode) | FLUSHTXFIFO | STOREFORWARD,
+@@ -624,11 +705,11 @@
+ {
+ 	struct eth_dma_regs *dma_p = priv->dma_regs_p;
+ 	u32 desc_num = priv->tx_currdescnum;
+-	struct dmamacdescr *desc_p = &priv->tx_mac_descrtable[desc_num];
++	struct dmamacdescr *desc_p = dw_desc_va(&priv->tx_mac_descrtable[desc_num]);
+ 	ulong desc_start = (ulong)desc_p;
+ 	ulong desc_end = desc_start +
+ 		roundup(sizeof(*desc_p), ARCH_DMA_MINALIGN);
+-	ulong data_start = dev_bus_to_phys(priv->dev, desc_p->dmamac_addr);
++	ulong data_start = (ulong)dw_dma_unmap(priv->dev, desc_p->dmamac_addr);
+ 	ulong data_end = data_start + roundup(length, ARCH_DMA_MINALIGN);
+ 	/*
+ 	 * Strictly we only need to invalidate the "txrx_status" field
+@@ -638,7 +719,7 @@
+ 	 * individual descriptors in the array are each aligned to
+ 	 * ARCH_DMA_MINALIGN and padded appropriately.
+ 	 */
+-	invalidate_dcache_range(desc_start, desc_end);
++	dw_desc_inval(desc_start, desc_end);
+ 
+ 	/* Check if the descriptor is owned by CPU */
+ 	if (desc_p->txrx_status & DESC_TXSTS_OWNBYDMA) {
+@@ -673,7 +754,7 @@
+ #endif
+ 
+ 	/* Flush modified buffer descriptor */
+-	flush_dcache_range(desc_start, desc_end);
++	dw_desc_flush(desc_start, desc_end);
+ 
+ 	/* Test the wrap-around condition. */
+ 	if (++desc_num >= CFG_TX_DESCR_NUM)
+@@ -690,16 +771,16 @@
+ static int _dw_eth_recv(struct dw_eth_dev *priv, uchar **packetp)
+ {
+ 	u32 status, desc_num = priv->rx_currdescnum;
+-	struct dmamacdescr *desc_p = &priv->rx_mac_descrtable[desc_num];
++	struct dmamacdescr *desc_p = dw_desc_va(&priv->rx_mac_descrtable[desc_num]);
+ 	int length = -EAGAIN;
+ 	ulong desc_start = (ulong)desc_p;
+ 	ulong desc_end = desc_start +
+ 		roundup(sizeof(*desc_p), ARCH_DMA_MINALIGN);
+-	ulong data_start = dev_bus_to_phys(priv->dev, desc_p->dmamac_addr);
++	ulong data_start = (ulong)dw_dma_unmap(priv->dev, desc_p->dmamac_addr);
+ 	ulong data_end;
+ 
+ 	/* Invalidate entire buffer descriptor */
+-	invalidate_dcache_range(desc_start, desc_end);
++	dw_desc_inval(desc_start, desc_end);
+ 
+ 	status = desc_p->txrx_status;
+ 
+@@ -712,7 +793,7 @@
+ 		/* Invalidate received data */
+ 		data_end = data_start + roundup(length, ARCH_DMA_MINALIGN);
+ 		invalidate_dcache_range(data_start, data_end);
+-		*packetp = (uchar *)(ulong)dev_bus_to_phys(priv->dev,
++		*packetp = (uchar *)dw_dma_unmap(priv->dev,
+ 				desc_p->dmamac_addr);
+ 	}
+ 
+@@ -722,11 +803,11 @@
+ static int _dw_free_pkt(struct dw_eth_dev *priv)
+ {
+ 	u32 desc_num = priv->rx_currdescnum;
+-	struct dmamacdescr *desc_p = &priv->rx_mac_descrtable[desc_num];
++	struct dmamacdescr *desc_p = dw_desc_va(&priv->rx_mac_descrtable[desc_num]);
+ 	ulong desc_start = (ulong)desc_p;
+ 	ulong desc_end = desc_start +
+ 		roundup(sizeof(*desc_p), ARCH_DMA_MINALIGN);
+-	ulong data_start = dev_bus_to_phys(priv->dev, desc_p->dmamac_addr);
++	ulong data_start = (ulong)dw_dma_unmap(priv->dev, desc_p->dmamac_addr);
+ 	ulong data_end = data_start + roundup(CFG_ETH_BUFSIZE, ARCH_DMA_MINALIGN);
+ 
+ 	/* Invalidate the descriptor buffer data */
+@@ -739,7 +820,7 @@
+ 	desc_p->txrx_status |= DESC_RXSTS_OWNBYDMA;
+ 
+ 	/* Flush only status field - others weren't changed */
+-	flush_dcache_range(desc_start, desc_end);
++	dw_desc_flush(desc_start, desc_end);
+ 
+ 	/* Test the wrap-around condition. */
+ 	if (++desc_num >= CFG_RX_DESCR_NUM)
+@@ -946,7 +1027,15 @@
+ 	}
+ 
+ 	debug("%s, iobase=%pa, priv=%p\n", __func__, &iobase, priv);
+-	ioaddr = phys_to_virt(iobase);
++	/*
++	 * Map the register window uncached. On MIPS phys_to_virt() returns a
++	 * cached KSEG0 pointer and MMIO through it bus-stalls on real silicon
++	 * (it only appears to work under emulators that don't model the cache);
++	 * map_physmem(MAP_NOCACHE) yields the uncached KSEG1 mapping there and
++	 * is an identity map on architectures where phys_to_virt was fine.
++	 */
++	ioaddr = map_physmem(iobase, DW_DMA_BASE_OFFSET + sizeof(struct eth_dma_regs),
++			     MAP_NOCACHE);
+ 	priv->mac_regs_p = (struct eth_mac_regs *)ioaddr;
+ 	priv->dma_regs_p = (struct eth_dma_regs *)(ioaddr + DW_DMA_BASE_OFFSET);
+ 	priv->interface = pdata->phy_interface;
+diff -Naur --no-dereference u-boot-2026.07/drivers/net/designware.h trim-tree/drivers/net/designware.h
+--- u-boot-2026.07/drivers/net/designware.h	2026-07-06 23:50:43.000000000 +0000
++++ trim-tree/drivers/net/designware.h	2026-07-29 18:08:20.512608970 +0000
+@@ -94,6 +94,7 @@
+ #define PRIORXTX_21		(1 << 14)
+ #define PRIORXTX_11		(0 << 14)
+ #define DMA_PBL			(GMAC_DEFAULT_DMA_PBL << 8)
++#define DMA_ATDS		(1 << 7)
+ #define RXHIGHPRIO		(1 << 1)
+ #define DMAMAC_SRST		(1 << 0)
+ 
 diff -Naur --no-dereference u-boot-2026.07/drivers/net/dwc_eth_xgmac.c trim-tree/drivers/net/dwc_eth_xgmac.c
 --- u-boot-2026.07/drivers/net/dwc_eth_xgmac.c	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/net/dwc_eth_xgmac.c	2026-07-29 18:19:54.060813458 +0000
++++ trim-tree/drivers/net/dwc_eth_xgmac.c	2026-07-29 18:38:06.623861918 +0000
 @@ -451,7 +451,19 @@
  	if (ret < 0)
  		return ret;
@@ -46617,7 +46914,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/net/dwmac_ingenic.c trim-tree
 +};
 diff -Naur --no-dereference u-boot-2026.07/drivers/net/Kconfig trim-tree/drivers/net/Kconfig
 --- u-boot-2026.07/drivers/net/Kconfig	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/net/Kconfig	2026-07-29 18:19:53.930811920 +0000
++++ trim-tree/drivers/net/Kconfig	2026-07-29 18:38:06.493860365 +0000
 @@ -200,6 +200,15 @@
  	  The Synopsys Designware Ethernet XGMAC IP block with specific
  	  configuration used in Intel SoC FPGA chip.
@@ -46653,7 +46950,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/net/Kconfig trim-tree/drivers
  	depends on ETH_DESIGNWARE
 diff -Naur --no-dereference u-boot-2026.07/drivers/net/Makefile trim-tree/drivers/net/Makefile
 --- u-boot-2026.07/drivers/net/Makefile	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/net/Makefile	2026-07-29 18:19:53.930811920 +0000
++++ trim-tree/drivers/net/Makefile	2026-07-29 18:38:06.493860365 +0000
 @@ -22,12 +22,14 @@
  obj-$(CONFIG_DWC_ETH_QOS_ADI) += dwc_eth_qos_adi.o
  obj-$(CONFIG_DWC_ETH_QOS_IMX) += dwc_eth_qos_imx.o
@@ -46753,7 +47050,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/net/phy/icplus.c trim-tree/dr
 +};
 diff -Naur --no-dereference u-boot-2026.07/drivers/net/phy/Kconfig trim-tree/drivers/net/phy/Kconfig
 --- u-boot-2026.07/drivers/net/phy/Kconfig	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/net/phy/Kconfig	2026-07-29 18:19:53.930811920 +0000
++++ trim-tree/drivers/net/phy/Kconfig	2026-07-29 18:38:06.493860365 +0000
 @@ -167,7 +167,7 @@
  	default y
  	depends on CORTINA_NI_ENET
@@ -46779,7 +47076,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/net/phy/Kconfig trim-tree/dri
  
 diff -Naur --no-dereference u-boot-2026.07/drivers/net/phy/Makefile trim-tree/drivers/net/phy/Makefile
 --- u-boot-2026.07/drivers/net/phy/Makefile	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/net/phy/Makefile	2026-07-29 18:19:53.930811920 +0000
++++ trim-tree/drivers/net/phy/Makefile	2026-07-29 18:38:06.493860365 +0000
 @@ -18,6 +18,7 @@
  obj-$(CONFIG_PHY_CORTINA_ACCESS) += ca_phy.o
  obj-$(CONFIG_PHY_DAVICOM) += davicom.o
@@ -46790,7 +47087,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/net/phy/Makefile trim-tree/dr
  obj-$(CONFIG_PHY_MARVELL_10G) += marvell10g.o
 diff -Naur --no-dereference u-boot-2026.07/drivers/pinctrl/Kconfig trim-tree/drivers/pinctrl/Kconfig
 --- u-boot-2026.07/drivers/pinctrl/Kconfig	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/pinctrl/Kconfig	2026-07-29 18:19:53.940812038 +0000
++++ trim-tree/drivers/pinctrl/Kconfig	2026-07-29 18:38:06.503860485 +0000
 @@ -424,4 +424,14 @@
  source "drivers/pinctrl/uniphier/Kconfig"
  source "drivers/pinctrl/starfive/Kconfig"
@@ -46808,7 +47105,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/pinctrl/Kconfig trim-tree/dri
  endmenu
 diff -Naur --no-dereference u-boot-2026.07/drivers/pinctrl/Makefile trim-tree/drivers/pinctrl/Makefile
 --- u-boot-2026.07/drivers/pinctrl/Makefile	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/pinctrl/Makefile	2026-07-29 18:19:53.940812038 +0000
++++ trim-tree/drivers/pinctrl/Makefile	2026-07-29 18:38:06.503860485 +0000
 @@ -30,6 +30,7 @@
  obj-$(CONFIG_ARCH_NEXELL)	+= nexell/
  obj-$(CONFIG_PINCTRL_QE)	+= pinctrl-qe-io.o
@@ -51644,7 +51941,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/ram/ingenic/Makefile trim-tre
 +obj-$(CONFIG_RAM_INGENIC_DDR_T20) += ddr_t20.o
 diff -Naur --no-dereference u-boot-2026.07/drivers/ram/Kconfig trim-tree/drivers/ram/Kconfig
 --- u-boot-2026.07/drivers/ram/Kconfig	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/ram/Kconfig	2026-07-29 18:19:53.940812038 +0000
++++ trim-tree/drivers/ram/Kconfig	2026-07-29 18:38:06.503860485 +0000
 @@ -140,6 +140,7 @@
  
  source "drivers/ram/aspeed/Kconfig"
@@ -51655,7 +51952,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/ram/Kconfig trim-tree/drivers
  source "drivers/ram/rockchip/Kconfig"
 diff -Naur --no-dereference u-boot-2026.07/drivers/ram/Makefile trim-tree/drivers/ram/Makefile
 --- u-boot-2026.07/drivers/ram/Makefile	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/ram/Makefile	2026-07-29 18:19:53.940812038 +0000
++++ trim-tree/drivers/ram/Makefile	2026-07-29 18:38:06.503860485 +0000
 @@ -9,6 +9,13 @@
  obj-$(CONFIG_STM32MP1_DDR) += stm32mp1/
  obj-$(CONFIG_STM32_SDRAM) += stm32_sdram.o
@@ -51672,7 +51969,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/ram/Makefile trim-tree/driver
  
 diff -Naur --no-dereference u-boot-2026.07/drivers/serial/ns16550.c trim-tree/drivers/serial/ns16550.c
 --- u-boot-2026.07/drivers/serial/ns16550.c	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/serial/ns16550.c	2026-07-29 18:19:53.960812275 +0000
++++ trim-tree/drivers/serial/ns16550.c	2026-07-29 18:38:06.533860843 +0000
 @@ -237,6 +237,26 @@
  	}
  #endif
@@ -53261,7 +53558,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/sound/jz_t10_codec.c trim-tre
 +};
 diff -Naur --no-dereference u-boot-2026.07/drivers/sound/Kconfig trim-tree/drivers/sound/Kconfig
 --- u-boot-2026.07/drivers/sound/Kconfig	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/sound/Kconfig	2026-07-29 18:19:53.940812038 +0000
++++ trim-tree/drivers/sound/Kconfig	2026-07-29 18:38:06.503860485 +0000
 @@ -22,6 +22,35 @@
  	  I2S. It calls either of the two supported codecs (no use is made
  	  of driver model at present).
@@ -53300,7 +53597,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/sound/Kconfig trim-tree/drive
  	depends on I2S && ARCH_ROCKCHIP
 diff -Naur --no-dereference u-boot-2026.07/drivers/sound/Makefile trim-tree/drivers/sound/Makefile
 --- u-boot-2026.07/drivers/sound/Makefile	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/sound/Makefile	2026-07-29 18:19:53.940812038 +0000
++++ trim-tree/drivers/sound/Makefile	2026-07-29 18:38:06.503860485 +0000
 @@ -10,6 +10,11 @@
  obj-$(CONFIG_SOUND_DA7219)	+= da7219.o
  obj-$(CONFIG_I2S_SAMSUNG)	+= samsung-i2s.o
@@ -54737,7 +55034,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/spi/ingenic_sfc.h trim-tree/d
 +#endif /* _SPI_INGENIC_SFC_H */
 diff -Naur --no-dereference u-boot-2026.07/drivers/spi/Kconfig trim-tree/drivers/spi/Kconfig
 --- u-boot-2026.07/drivers/spi/Kconfig	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/spi/Kconfig	2026-07-29 18:19:53.950812156 +0000
++++ trim-tree/drivers/spi/Kconfig	2026-07-29 18:38:06.513860604 +0000
 @@ -388,6 +388,16 @@
  	  Enable the MXS SPI controller driver. This driver can be used
  	  on the i.MX23 and i.MX28 SoCs.
@@ -54757,7 +55054,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/spi/Kconfig trim-tree/drivers
  	select SPI_MEM
 diff -Naur --no-dereference u-boot-2026.07/drivers/spi/Makefile trim-tree/drivers/spi/Makefile
 --- u-boot-2026.07/drivers/spi/Makefile	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/spi/Makefile	2026-07-29 18:19:53.950812156 +0000
++++ trim-tree/drivers/spi/Makefile	2026-07-29 18:38:06.513860604 +0000
 @@ -68,6 +68,7 @@
  obj-$(CONFIG_PIC32_SPI) += pic32_spi.o
  obj-$(CONFIG_PL022_SPI) += pl022_spi.o
@@ -54768,7 +55065,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/spi/Makefile trim-tree/driver
  obj-$(CONFIG_ROCKCHIP_SFC) += rockchip_sfc.o
 diff -Naur --no-dereference u-boot-2026.07/drivers/usb/gadget/dwc2_udc_otg.c trim-tree/drivers/usb/gadget/dwc2_udc_otg.c
 --- u-boot-2026.07/drivers/usb/gadget/dwc2_udc_otg.c	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/usb/gadget/dwc2_udc_otg.c	2026-07-29 18:19:53.990812630 +0000
++++ trim-tree/drivers/usb/gadget/dwc2_udc_otg.c	2026-07-29 18:38:06.563861202 +0000
 @@ -470,6 +470,14 @@
  	u32 max_hw_ep;
  	int pdata_hw_ep;
@@ -54786,7 +55083,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/usb/gadget/dwc2_udc_otg.c tri
  	debug("Resetting OTG controller\n");
 diff -Naur --no-dereference u-boot-2026.07/drivers/usb/gadget/dwc2_udc_otg_regs.h trim-tree/drivers/usb/gadget/dwc2_udc_otg_regs.h
 --- u-boot-2026.07/drivers/usb/gadget/dwc2_udc_otg_regs.h	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/usb/gadget/dwc2_udc_otg_regs.h	2026-07-29 18:19:53.990812630 +0000
++++ trim-tree/drivers/usb/gadget/dwc2_udc_otg_regs.h	2026-07-29 18:38:06.563861202 +0000
 @@ -56,13 +56,24 @@
  #define EXYNOS4X12_CLK_SEL_12MHZ	(0x02 << 0)
  #define EXYNOS4X12_CLK_SEL_24MHZ	(0x05 << 0)
@@ -54819,7 +55116,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/usb/gadget/dwc2_udc_otg_regs.
  #endif
 diff -Naur --no-dereference u-boot-2026.07/drivers/usb/gadget/dwc2_udc_otg_xfer_dma.c trim-tree/drivers/usb/gadget/dwc2_udc_otg_xfer_dma.c
 --- u-boot-2026.07/drivers/usb/gadget/dwc2_udc_otg_xfer_dma.c	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/usb/gadget/dwc2_udc_otg_xfer_dma.c	2026-07-29 18:19:54.020812985 +0000
++++ trim-tree/drivers/usb/gadget/dwc2_udc_otg_xfer_dma.c	2026-07-29 18:38:06.593861560 +0000
 @@ -29,6 +29,60 @@
  #define GET_MAX_LUN_REQUEST	0xFE
  #define BOT_RESET_REQUEST	0xFF
@@ -54958,7 +55255,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/usb/gadget/dwc2_udc_otg_xfer_
   */
 diff -Naur --no-dereference u-boot-2026.07/drivers/usb/gadget/Kconfig trim-tree/drivers/usb/gadget/Kconfig
 --- u-boot-2026.07/drivers/usb/gadget/Kconfig	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/usb/gadget/Kconfig	2026-07-29 18:19:53.950812156 +0000
++++ trim-tree/drivers/usb/gadget/Kconfig	2026-07-29 18:38:06.523860724 +0000
 @@ -109,7 +109,7 @@
  
  config USB_GADGET_DWC2_OTG
@@ -54986,7 +55283,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/usb/gadget/Kconfig trim-tree/
  config USB_GADGET_OS_DESCRIPTORS
 diff -Naur --no-dereference u-boot-2026.07/drivers/usb/host/dwc2.c trim-tree/drivers/usb/host/dwc2.c
 --- u-boot-2026.07/drivers/usb/host/dwc2.c	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/usb/host/dwc2.c	2026-07-29 18:19:54.040813222 +0000
++++ trim-tree/drivers/usb/host/dwc2.c	2026-07-29 18:08:20.562609561 +0000
 @@ -208,6 +208,17 @@
  	/* Clear Host Set HNP Enable in the OTG Control Register */
  	clrbits_le32(&regs->global_regs.gotgctl, GOTGCTL_HSTSETHNPEN);
@@ -55024,7 +55321,16 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/usb/host/dwc2.c trim-tree/dri
  		hprt0 = readl(&regs->host_regs.hprt0) & ~HPRT0_W1C_MASK;
  		if (!(hprt0 & HPRT0_PWR)) {
  			hprt0 |= HPRT0_PWR;
-@@ -338,6 +357,20 @@
+@@ -277,6 +296,8 @@
+ #else
+ 	usbcfg &= ~GUSBCFG_TERMSELDLPULSE;
+ #endif
++
++
+ 	writel(usbcfg, &regs->global_regs.gusbcfg);
+ 
+ 	/* Reset the Controller */
+@@ -338,6 +359,20 @@
  #endif /* DWC2_UTMI_WIDTH */
  #endif /* DWC2_PHY_TYPE */
  
@@ -55045,7 +55351,59 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/usb/host/dwc2.c trim-tree/dri
  	writel(usbcfg, &regs->global_regs.gusbcfg);
  
  	/* Reset after setting the PHY parameters */
-@@ -808,12 +841,18 @@
+@@ -726,13 +761,31 @@
+ 
+ int wait_for_chhltd(struct dwc2_hc_regs *hc_regs, u32 *sub, u8 *toggle)
+ {
+-	int ret;
+ 	u32 hcint, hctsiz;
++	int ret;
+ 
++	/*
++	 * Wait for the host channel to halt. In internal-DMA mode the
++	 * DWC2 core retries a NAKed non-periodic transfer on its own, so
++	 * a transfer that has data to move completes (CHHLTD) with no
++	 * software help and the NAKs never surface. If CHHLTD does not
++	 * arrive the channel is NAK-polling a device with nothing to
++	 * transfer - e.g. a USB-NIC bulk-IN with no packet buffered - so
++	 * force-halt it (CHENA|CHDIS) and report a retriable -EAGAIN.
++	 *
++	 * Do NOT force-halt on the raw NAK interrupt: that aborts the
++	 * core's own retry mid-flight and races packet arrival, which
++	 * silently drops USB-NIC frames unless a long per-NAK delay keeps
++	 * the abort clear of the data.
++	 */
+ 	ret = wait_for_bit_le32(&hc_regs->hcint, HCINTMSK_CHHLTD, true,
+-				2000, false);
+-	if (ret)
+-		return ret;
++				10, false);
++	if (ret) {
++		setbits_le32(&hc_regs->hcchar, HCCHAR_CHENA | HCCHAR_CHDIS);
++		wait_for_bit_le32(&hc_regs->hcint, HCINTMSK_CHHLTD, true,
++				  100, false);
++		return -EAGAIN;
++	}
+ 
+ 	hcint = readl(&hc_regs->hcint);
+ 	hctsiz = readl(&hc_regs->hctsiz);
+@@ -789,7 +842,14 @@
+ 		}
+ 	}
+ 
+-	writel(phys_to_bus((unsigned long)aligned_buffer), &hc_regs->hcdma);
++	/*
++	 * HCDMA is a hardware bus-master (physical) address; aligned_buffer
++	 * is a cached KSEG0 CPU pointer on MIPS. The stock
++	 * phys_to_bus(ptr) only works where virt==phys (ARM); on MIPS it
++	 * programmed an out-of-RAM address. Convert with virt_to_phys()
++	 * (identity on virt==phys arches).
++	 */
++	writel(phys_to_bus(virt_to_phys(aligned_buffer)), &hc_regs->hcdma);
+ 
+ 	/* Clear old interrupt conditions for this host channel. */
+ 	writel(0x3fff, &hc_regs->hcint);
+@@ -808,12 +868,18 @@
  
  	if (in) {
  		xfer_len -= sub;
@@ -55213,7 +55571,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/watchdog/jz4740_wdt.c trim-tr
 +};
 diff -Naur --no-dereference u-boot-2026.07/drivers/watchdog/Kconfig trim-tree/drivers/watchdog/Kconfig
 --- u-boot-2026.07/drivers/watchdog/Kconfig	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/watchdog/Kconfig	2026-07-29 18:19:53.950812156 +0000
++++ trim-tree/drivers/watchdog/Kconfig	2026-07-29 18:38:06.523860724 +0000
 @@ -214,9 +214,19 @@
  	help
  	  Support for external watchdog fed by toggling a gpio in SPL.
@@ -55236,7 +55594,7 @@ diff -Naur --no-dereference u-boot-2026.07/drivers/watchdog/Kconfig trim-tree/dr
  	  Select this to enable max6370 watchdog timer.
 diff -Naur --no-dereference u-boot-2026.07/drivers/watchdog/Makefile trim-tree/drivers/watchdog/Makefile
 --- u-boot-2026.07/drivers/watchdog/Makefile	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/drivers/watchdog/Makefile	2026-07-29 18:19:53.950812156 +0000
++++ trim-tree/drivers/watchdog/Makefile	2026-07-29 18:38:06.523860724 +0000
 @@ -28,6 +28,7 @@
  obj-$(CONFIG_WDT_BOOKE) += booke_wdt.o
  obj-$(CONFIG_WDT_CORTINA) += cortina_wdt.o
@@ -56438,7 +56796,7 @@ diff -Naur --no-dereference u-boot-2026.07/include/linux/mtd/spi-nor.h trim-tree
  #define SR3_WPS			BIT(2)
 diff -Naur --no-dereference u-boot-2026.07/Kconfig trim-tree/Kconfig
 --- u-boot-2026.07/Kconfig	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/Kconfig	2026-07-29 18:19:53.840810854 +0000
++++ trim-tree/Kconfig	2026-07-29 18:38:06.393859170 +0000
 @@ -643,6 +643,7 @@
  	default 0x4000000 if ARCH_VERSAL_NET || ARCH_VERSAL || ARCH_ZYNQMP
  	default 0x200000 if MICROBLAZE
@@ -56449,7 +56807,7 @@ diff -Naur --no-dereference u-boot-2026.07/Kconfig trim-tree/Kconfig
  	  Define Max stack size that can be used by U-Boot. The UEFI sub-system
 diff -Naur --no-dereference u-boot-2026.07/MAINTAINERS trim-tree/MAINTAINERS
 --- u-boot-2026.07/MAINTAINERS	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/MAINTAINERS	2026-07-29 18:19:53.890811446 +0000
++++ trim-tree/MAINTAINERS	2026-07-29 18:38:06.453859887 +0000
 @@ -209,22 +209,24 @@
  R:	Aspeed BMC SW team <BMC-SW@aspeedtech.com>
  R:	Joel Stanley <joel@jms.id.au>
@@ -56507,7 +56865,7 @@ diff -Naur --no-dereference u-boot-2026.07/MAINTAINERS trim-tree/MAINTAINERS
  S:	Maintained
 diff -Naur --no-dereference u-boot-2026.07/scripts/Makefile.xpl trim-tree/scripts/Makefile.xpl
 --- u-boot-2026.07/scripts/Makefile.xpl	2026-07-06 23:50:43.000000000 +0000
-+++ trim-tree/scripts/Makefile.xpl	2026-07-29 18:19:53.970812393 +0000
++++ trim-tree/scripts/Makefile.xpl	2026-07-29 18:38:06.543860963 +0000
 @@ -310,6 +310,22 @@
  quiet_cmd_copy = COPY    $@
        cmd_copy = cp $< $@
