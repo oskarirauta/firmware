@@ -1,0 +1,67 @@
+ingenic: detect T41 - it reports the same generation as T40
+
+get_cpu_id() branches on the generation nibble derived from 0x1300002C
+and has a separate case for 0x41. That case is unreachable: a T41 reports
+0x40 there, exactly like a T40. Measured on a T41NQ:
+
+    0x1300002C = 0x10040003   -> (soc_id << 4) >> 16 = 0x0040
+    0x13540250 = 0xAAAA2222   -> sub-type 0xAAAA
+    0x13540238 = 0x13540231 = 0x00000000
+
+So every T41 falls into the T40 sub-type table, which knows only 0x1111,
+0x8888, 0x7777 and 0x4444, and comes out as "unknown" - while ipcinfo -f
+reports "t40" because chip_generation was already set. The right answer
+was in the table all along: 0xAAAA is T41NQ.
+
+Handle the T41-only sub-types in the 0x40 branch and set chip_generation
+so the family reports as t41 too.
+
+0x1111, 0x7777 and 0x8888 keep their existing T40 meanings. Each is
+claimed by both families - T40N/T41N, T40XP/T41ZN, T40NN/T41LC - and
+nothing in these registers distinguishes them. thingino's own detection
+(sbin/soc) reaches the same conclusion independently: it treats cpuid
+0x40 as the whole T40/T41 family, identifies purely from the sub-type,
+and carries comments marking those same three as overlapping.
+
+Verified on hardware: an unbranded T41NQ camera with a GC5603 sensor now
+reports "T41NQ" and family "t41" instead of "unknown" and "t40".
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+
+diff --git a/src/hal/ingenic.c b/src/hal/ingenic.c
+index 376d473..1f3562b 100644
+--- a/src/hal/ingenic.c
++++ b/src/hal/ingenic.c
+@@ -182,6 +182,32 @@ static int get_cpu_id() {
+             return 26;
+         case 0x4444:
+             return 27;
++        /*
++         * T41 reports the very same 0x40 generation in 0x1300002C - measured
++         * on a T41NQ: soc_id 0x10040003, type2 0xAAAA2222 - so the 0x41 case
++         * below is unreachable and every T41 came out "unknown". Handle the
++         * sub-types that belong to T41 alone here.
++         *
++         * 0x1111, 0x7777 and 0x8888 are deliberately left with their T40
++         * meanings above: each is claimed by both families (T40N/T41N,
++         * T40XP/T41ZN, T40NN/T41LC) and nothing in these registers tells them
++         * apart. 0x13540238 and 0x13540231 read 0 on this part.
++         */
++        case 0x3333:
++            chip_generation = 0x41;
++            return 28;
++        case 0x5555:
++            chip_generation = 0x41;
++            return 29;
++        case 0x9999:
++            chip_generation = 0x41;
++            return 31;
++        case 0xAAAA:
++            chip_generation = 0x41;
++            return 34;
++        case 0x6666:
++            chip_generation = 0x41;
++            return 35;
+         default:
+             return -1;
+         }

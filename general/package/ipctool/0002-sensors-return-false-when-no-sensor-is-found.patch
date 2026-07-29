@@ -1,0 +1,51 @@
+sensors: return false when no sensor is found
+
+getsensorid() is declared bool, but the loop that searches the remaining i2c
+adapters simply ends and the function falls off its closing brace with no
+return statement. The value the caller sees is then whatever happened to be
+left in the return register, and on mipsel that is routinely non-zero.
+
+getsensorshort() and getsensoridentity() therefore treat a failed search as a
+success and print an uninitialised sensor_ctx_t from the stack. On an Ingenic
+T41 camera, where no sensor in the table matches, `ipcinfo -s` prints a
+different few bytes of garbage on every run:
+
+    # ipcinfo -s
+    m#w
+    # ipcinfo -s
+    rw
+
+This is not specific to T41 - it happens on any board where detection fails.
+Return false at the end of the search, and zero the context in both callers the
+way detect_sensors() already does, so a failure gives EXIT_FAILURE and no
+output instead of stack contents.
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+
+--- a/src/sensors.c
++++ b/src/sensors.c
+@@ -1221,7 +1221,7 @@
+    
+ }
+ 
+-
++    return false;
+ }
+ 
+ #ifndef STANDALONE_LIBRARY
+@@ -1263,6 +1263,7 @@
+ static char sensor_indentity[16];
+ const char *getsensoridentity() {
+     sensor_ctx_t ctx;
++    memset(&ctx, 0, sizeof(ctx));
+     if (!getsensorid(&ctx))
+         return NULL;
+     lsnprintf(sensor_indentity, sizeof(sensor_indentity), "%s_%s",
+@@ -1272,6 +1273,7 @@
+ 
+ const char *getsensorshort() {
+     sensor_ctx_t ctx;
++    memset(&ctx, 0, sizeof(ctx));
+     if (!getsensorid(&ctx))
+         return NULL;
+     lsnprintf(sensor_indentity, sizeof(sensor_indentity), "%s", ctx.sensor_id);
