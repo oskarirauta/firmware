@@ -245,6 +245,13 @@ endef
 # the lines below no-ops there.
 UBOOT_IMAGE := $(subst ",,$(BR2_TARGET_UBOOT_FORMAT_CUSTOM_NAME))
 
+# A board that builds its own bootloader can also ship a full-chip image, ready
+# to write to a blank device in one go, by pointing BR2_OPENIPC_FLASHMAP at a
+# file describing where each partition lives. Boards that set nothing get
+# nothing: FLASHMAP is then empty and the step below disappears.
+FLASHMAP := $(if $(BR2_OPENIPC_FLASHMAP),$(PWD)/$(subst ",,$(BR2_OPENIPC_FLASHMAP)))
+FLASH_BYTES := $(if $(BR2_OPENIPC_FLASH_SIZE),$(shell expr $(subst ",,$(BR2_OPENIPC_FLASH_SIZE)) \* 1048576))
+
 define REPACK_FIRMWARE
 	cd $(TARGET)/images && if test -e rootfs.tar; then mv -f rootfs.tar rootfs.$(BR2_OPENIPC_SOC_MODEL).tar; fi
 	$(if $(1),cd $(TARGET)/images && if test -e $(1); then mv -f $(1) $(1).$(BR2_OPENIPC_SOC_MODEL); fi)
@@ -260,4 +267,8 @@ define REPACK_FIRMWARE
 	cd $(TARGET)/images && tar -czf $(ARCHIVE) $(KERNEL) $(ROOTFS) \
 		$(if $(UBOOT_IMAGE),$$(ls -d $(UBOOT_IMAGE).$(BR2_OPENIPC_SOC_MODEL) $(UBOOT_IMAGE).$(BR2_OPENIPC_SOC_MODEL).md5sum 2>/dev/null))
 	rm -f $(TARGET)/images/*.md5sum
+	$(if $(FLASHMAP),$(eval FULLIMG = openipc.$(BR2_OPENIPC_SOC_MODEL)-$(3)-$(BR2_OPENIPC_VARIANT)-full.bin))
+	$(if $(FLASHMAP),$(PWD)/general/scripts/mkfullimage $(FLASHMAP) $(TARGET)/images \
+		$(BR2_OPENIPC_SOC_MODEL) $(FLASH_BYTES) $(TARGET)/images/$(FULLIMG))
+	$(if $(FLASHMAP),cd $(TARGET)/images && md5sum $(FULLIMG) > $(FULLIMG).md5sum)
 endef

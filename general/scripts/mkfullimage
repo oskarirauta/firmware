@@ -1,0 +1,106 @@
+#!/bin/sh
+#
+# Assemble a full-chip flash image from the partition images the build produced.
+#
+#   mkfullimage <flashmap> <images-dir> <soc-model> <flash-size-bytes> <output>
+#
+# The flashmap has one line per partition:
+#
+#	<offset>  <size>  <image basename, or "-" to leave erased>
+#
+# and lives with the board's other configuration. Basenames are the names the
+# build uses before REPACK_FIRMWARE appends the SOC_MODEL suffix; the suffix is
+# added here, so the flashmap does not have to know about it.
+#
+# Erased flash reads as 0xff, so that is what the image is filled with before
+# the parts are written into it. A partition left as "-" therefore arrives on the
+# device indistinguishable from one that has just been erased - which is the
+# point for the U-Boot environment and the overlay: both are meant to be filled
+# in per unit on first boot, not shipped with one camera's contents.
+#
+# The layout is checked to tile the chip exactly. A gap or an overlap here would
+# put a partition at the wrong address on every device flashed with the image,
+# so it is refused rather than warned about.
+
+set -e
+
+usage() {
+	echo "usage: $0 <flashmap> <images-dir> <soc-model> <flash-size-bytes> <output>" >&2
+	exit 2
+}
+
+[ $# -eq 5 ] || usage
+
+MAP=$1
+DIR=$2
+SOC=$3
+TOTAL=$4
+OUT=$5
+
+[ -f "$MAP" ] || { echo "mkfullimage: no such flashmap: $MAP" >&2; exit 1; }
+[ -d "$DIR" ] || { echo "mkfullimage: no such directory: $DIR" >&2; exit 1; }
+
+# Read the map first and check it before writing anything, so a bad layout costs
+# nothing. Offsets must be block aligned because the parts are placed with dd at
+# a block granularity.
+BS=4096
+[ $((TOTAL % BS)) -eq 0 ] || { echo "mkfullimage: flash size $TOTAL is not a multiple of $BS" >&2; exit 1; }
+
+expect=0
+lines=$(grep -v '^[[:space:]]*#' "$MAP" | grep -v '^[[:space:]]*$')
+[ -n "$lines" ] || { echo "mkfullimage: $MAP describes no partitions" >&2; exit 1; }
+
+echo "$lines" | while read -r off size file rest; do
+	[ -z "$rest" ] || { echo "mkfullimage: trailing junk in: $off $size $file $rest" >&2; exit 1; }
+	o=$((off)) s=$((size))
+	[ $((o % BS)) -eq 0 ] || { echo "mkfullimage: offset $off is not $BS-aligned" >&2; exit 1; }
+	[ "$s" -gt 0 ] || { echo "mkfullimage: size $size is not positive" >&2; exit 1; }
+	[ "$o" -eq "$expect" ] || {
+		printf 'mkfullimage: %s starts at %#x, expected %#x - gap or overlap\n' \
+			"$file" "$o" "$expect" >&2
+		exit 1
+	}
+	expect=$((o + s))
+	# `while read` runs in a subshell, so the running total cannot be carried
+	# out of the loop; it is recomputed below instead.
+done
+
+# Recompute the end of the last partition outside the subshell.
+end=$(echo "$lines" | awk '{ o = strtonum($1); s = strtonum($2); if (o + s > e) e = o + s } END { print e+0 }' 2>/dev/null || true)
+if [ -z "$end" ] || [ "$end" = "0" ]; then
+	# busybox awk has no strtonum(); fall back to the shell, which understands 0x
+	end=0
+	for pair in $(echo "$lines" | awk '{ print $1 "," $2 }'); do
+		o=$((${pair%,*})) s=$((${pair#*,}))
+		[ $((o + s)) -gt "$end" ] && end=$((o + s))
+	done
+fi
+[ "$end" -eq "$TOTAL" ] || {
+	printf 'mkfullimage: partitions cover %#x, flash is %#x - refusing\n' "$end" "$TOTAL" >&2
+	exit 1
+}
+
+# Fill with 0xff, then place the parts.
+tr '\000' '\377' < /dev/zero \
+	| dd of="$OUT" bs=$BS count=$((TOTAL / BS)) iflag=fullblock status=none
+
+printf '  %-14s %9s %9s  %s\n' partition offset size content
+echo "$lines" | while read -r off size file rest; do
+	o=$((off)) s=$((size))
+	if [ "$file" = "-" ]; then
+		printf '  %-14s %#9x %9d  (erased)\n' "-" "$o" "$s"
+		continue
+	fi
+	src="$DIR/$file.$SOC"
+	[ -f "$src" ] || src="$DIR/$file"
+	[ -f "$src" ] || { echo "mkfullimage: missing image: $DIR/$file.$SOC" >&2; exit 1; }
+	n=$(stat -c %s "$src")
+	[ "$n" -le "$s" ] || {
+		printf 'mkfullimage: %s is %d bytes, partition holds %d\n' "$src" "$n" "$s" >&2
+		exit 1
+	}
+	dd if="$src" of="$OUT" bs=$BS seek=$((o / BS)) conv=notrunc status=none
+	printf '  %-14s %#9x %9d  %s (%d)\n' "$(basename "$src")" "$o" "$s" "ok" "$n"
+done
+
+echo "  -> $OUT ($(stat -c %s "$OUT") bytes)"

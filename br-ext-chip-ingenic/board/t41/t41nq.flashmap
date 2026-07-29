@@ -1,0 +1,32 @@
+# Flash layout for the T41NQ, used to assemble the full 16 MiB provisioning
+# image. One line per partition:
+#
+#	<offset>  <size>  <image basename, or "-" to leave erased>
+#
+# The basename is what the build produces before REPACK_FIRMWARE appends the
+# SOC_MODEL suffix; the suffix is added when the image is assembled.
+#
+# THIS MUST AGREE WITH THE mtdparts LINE IN THE BUILT-IN ENVIRONMENT, which is
+# the authority:
+#
+#	jz_sfc:320k(boot),64k(env),2240k(kernel),8192k(rootfs),5568k(rootfs_data)
+#
+# in patches-t41/uboot/2026.07/0003-isvp-t41-add-a-built-in-default-environment.patch.
+# The assembler checks that the partitions tile the flash exactly - no gap, no
+# overlap, and the total is the chip size - so a typo here is caught. It cannot
+# know whether the layout matches what the bootloader will tell Linux.
+#
+# The env partition is deliberately left erased. U-Boot writes its built-in
+# default there on first boot (CONFIG_T41_SAVE_DEFAULT_ENV), and that is what
+# makes one image safe to flash onto many cameras: each derives its own ethaddr
+# from its own eFUSE serial. An environment captured from a working camera would
+# clone that camera's MAC onto every unit.
+#
+# rootfs_data is left erased too, so the overlay starts empty rather than
+# carrying whatever the build host happened to leave in it.
+
+0x000000  0x050000  u-boot-with-spl-lzma.bin
+0x050000  0x010000  -
+0x060000  0x230000  uImage
+0x290000  0x800000  rootfs.squashfs
+0xa90000  0x570000  -

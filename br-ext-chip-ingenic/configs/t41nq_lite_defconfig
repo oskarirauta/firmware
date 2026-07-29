@@ -55,6 +55,12 @@ BR2_TARGET_UBOOT_CUSTOM_VERSION_VALUE="2026.07"
 BR2_TARGET_UBOOT_USE_DEFCONFIG=y
 BR2_TARGET_UBOOT_BOARD_DEFCONFIG="isvp_t41nq_sfcnor"
 BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES="$(EXTERNAL_VENDOR)/board/t41/t41nq.uboot.config"
+# Because this board builds its own bootloader it can also ship a full-chip
+# image, so a blank camera needs one write instead of three. The layout lives
+# next to the board's other configuration; the path is relative to the tree root
+# because the top-level Makefile, which assembles the image, has no
+# $(EXTERNAL_VENDOR) at the point it reads this.
+BR2_OPENIPC_FLASHMAP="br-ext-chip-ingenic/board/t41/t41nq.flashmap"
 BR2_TARGET_UBOOT_NEEDS_XXD=y
 BR2_TARGET_UBOOT_FORMAT_CUSTOM=y
 BR2_TARGET_UBOOT_FORMAT_CUSTOM_NAME="u-boot-with-spl-lzma.bin"
