@@ -239,15 +239,25 @@ define CHECK_SIZE
 		echo -- size exceeded by: $(shell expr $(FILE_SIZE) - $(2))KB; exit 1; fi
 endef
 
+# The bootloader, on the boards that build one. The name comes from the board's
+# own defconfig, so nothing here has to know what the U-Boot build produces, and
+# it is empty for every board that does not set BR2_TARGET_UBOOT - which makes
+# the lines below no-ops there.
+UBOOT_IMAGE := $(subst ",,$(BR2_TARGET_UBOOT_FORMAT_CUSTOM_NAME))
+
 define REPACK_FIRMWARE
 	cd $(TARGET)/images && if test -e rootfs.tar; then mv -f rootfs.tar rootfs.$(BR2_OPENIPC_SOC_MODEL).tar; fi
 	$(if $(1),cd $(TARGET)/images && if test -e $(1); then mv -f $(1) $(1).$(BR2_OPENIPC_SOC_MODEL); fi)
 	$(if $(2),cd $(TARGET)/images && if test -e $(2); then mv -f $(2) $(2).$(BR2_OPENIPC_SOC_MODEL); fi)
 	$(if $(1),cd $(TARGET)/images && md5sum $(1).$(BR2_OPENIPC_SOC_MODEL) > $(1).$(BR2_OPENIPC_SOC_MODEL).md5sum)
 	$(if $(2),cd $(TARGET)/images && md5sum $(2).$(BR2_OPENIPC_SOC_MODEL) > $(2).$(BR2_OPENIPC_SOC_MODEL).md5sum)
+	$(if $(UBOOT_IMAGE),cd $(TARGET)/images && if test -e $(UBOOT_IMAGE); then \
+		mv -f $(UBOOT_IMAGE) $(UBOOT_IMAGE).$(BR2_OPENIPC_SOC_MODEL); \
+		md5sum $(UBOOT_IMAGE).$(BR2_OPENIPC_SOC_MODEL) > $(UBOOT_IMAGE).$(BR2_OPENIPC_SOC_MODEL).md5sum; fi)
 	$(if $(1),$(eval KERNEL = $(1).$(BR2_OPENIPC_SOC_MODEL) $(1).$(BR2_OPENIPC_SOC_MODEL).md5sum),$(eval KERNEL =))
 	$(if $(2),$(eval ROOTFS = $(2).$(BR2_OPENIPC_SOC_MODEL) $(2).$(BR2_OPENIPC_SOC_MODEL).md5sum),$(eval ROOTFS =))
 	$(eval ARCHIVE = openipc.$(BR2_OPENIPC_SOC_MODEL)-$(3)-$(BR2_OPENIPC_VARIANT).tgz)
-	cd $(TARGET)/images && tar -czf $(ARCHIVE) $(KERNEL) $(ROOTFS)
+	cd $(TARGET)/images && tar -czf $(ARCHIVE) $(KERNEL) $(ROOTFS) \
+		$(if $(UBOOT_IMAGE),$$(ls -d $(UBOOT_IMAGE).$(BR2_OPENIPC_SOC_MODEL) $(UBOOT_IMAGE).$(BR2_OPENIPC_SOC_MODEL).md5sum 2>/dev/null))
 	rm -f $(TARGET)/images/*.md5sum
 endef
