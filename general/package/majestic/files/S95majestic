@@ -4,6 +4,11 @@ DAEMON="majestic"
 PIDFILE="/var/run/$DAEMON.pid"
 DAEMON_ARGS="-s"
 
+# Board-specific environment, if the board ships any. Additive and absent on
+# most targets: it is where a SoC that needs an LD_PRELOAD shim, or any other
+# per-board setting, puts it, rather than growing conditionals in here.
+[ -f /etc/default/majestic ] && . /etc/default/majestic
+
 start() {
 	echo -n "Starting $DAEMON: "
 	start-stop-daemon -b -m -S -q -p "$PIDFILE" -x "$DAEMON" -- $DAEMON_ARGS
@@ -16,12 +21,42 @@ start() {
 
 stop() {
 	echo -n "Stopping $DAEMON: "
+
 	start-stop-daemon -K -q -p "$PIDFILE"
-	if [ $? -eq 0 ]; then
-		rm -f "$PIDFILE"
-		echo "OK"
-	else
+
+	# Insist, for two reasons. start-stop-daemon matches on the pidfile alone,
+	# so a copy started by hand is left running; and majestic does not always
+	# act on SIGTERM promptly, because it can be several seconds unwinding the
+	# IMP pipeline. Either way init waits for it during shutdown and the
+	# reboot never completes - the machine simply stops after "Requesting
+	# system reboot". Give it a bounded chance to leave cleanly first.
+	i=0
+	while [ $i -lt 10 ] && pidof "$DAEMON" >/dev/null; do
+		sleep 1
+		i=$((i + 1))
+	done
+	if pidof "$DAEMON" >/dev/null; then
+		killall -KILL "$DAEMON" 2>/dev/null
+		sleep 1
+	fi
+
+	rm -f "$PIDFILE"
+
+	# Release the hardware watchdog, now that whoever held it has let go. A
+	# watchdog closed without the magic V keeps counting by design, so a
+	# daemon that armed it and then died leaves a timer running that reboots
+	# the board part-way through whatever came next. This has to happen after
+	# the daemon is gone: the device is exclusive-open, so attempting it
+	# earlier only fails with EBUSY. The subshell keeps the shell's own
+	# redirection error quiet on boards with no watchdog at all.
+	if [ -c /dev/watchdog ]; then
+		( printf 'V' > /dev/watchdog ) 2>/dev/null
+	fi
+
+	if pidof "$DAEMON" >/dev/null; then
 		echo "FAIL"
+	else
+		echo "OK"
 	fi
 }
 
