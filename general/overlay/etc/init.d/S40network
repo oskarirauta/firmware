@@ -13,7 +13,23 @@ set_wireless() {
 		ifup usb0
 		ifup eth1
 	fi
-	[ -e /sys/class/net/eth0 ] && ifconfig eth0 "${net:-192.168.2.10}" hw ether "${eth:-00:00:23:34:45:66}" up
+	if [ -e /sys/class/net/eth0 ]; then
+		# A hardware address can only be set while the interface is down, and
+		# assigning an IPv4 address brings it up. Doing both in one ifconfig
+		# call therefore never worked: the address went on first, the
+		# interface came up with it, and hw ether then failed with EBUSY,
+		# leaving the random MAC the driver invents at every boot.
+		#
+		# The fallback MAC is deliberately gone with it. Once hw ether
+		# actually takes effect, a shared default would put the same address
+		# on every camera that has no ethaddr - worse than the random one
+		# they get today, because those at least do not collide.
+		if [ -n "$eth" ]; then
+			ifconfig eth0 down
+			ifconfig eth0 hw ether "$eth"
+		fi
+		ifconfig eth0 "${net:-192.168.2.10}" up
+	fi
 }
 
 start() {
