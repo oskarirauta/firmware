@@ -1,0 +1,147 @@
+#!/bin/sh
+#
+# daynight - switch the camera between day and night.
+#
+#   daynight day | night | status
+#
+# Three things have to move together on this hardware, and this is the one place
+# that owns all three:
+#
+#   the IR-cut filter   a latching solenoid on two GPIOs, pulsed to move it
+#   the IR illuminator  on at night, off during the day
+#   the ISP             its own day/night tuning, which is what turns the image
+#                       greyscale and changes the noise handling
+#
+# It is not done in majestic, and that is deliberate. majestic's nightMode drives
+# the IR-cut pins itself when they are configured, but the ISP half of the switch
+# is missing on Ingenic: its only route is IMP_ISP_Tuning_SetISPRunningMode, and
+# on T41 that faults inside libimp - it gets past get_isptuningdev() and then
+# reads through a bogus pointer, which was confirmed by disassembly, not guessed.
+# majestic also passes 0 in that call every time, day or night, so even
+# intercepting it yields no mode to act on.
+#
+# So majestic's irCutPin1/irCutPin2 are deliberately left unset. Two owners
+# pulsing the same solenoid would fight, and a half-applied switch - filter moved
+# but ISP not, or the reverse - is worse than either state.
+#
+# The GPIO numbers come from the U-Boot environment rather than from here, so one
+# image serves boards that wire them differently:
+#
+#   gpio_ircut=49 50    the two solenoid pins
+#   gpio_ir850=81       the IR illuminator
+#
+# The GPIO idiom - export, direction, active_low, then a 10 ms pulse - follows
+# ingenic-osdrv-t31's ircut_demo, which drives the same two pins on the same SoC
+# family.
+
+ISP_DAYNIGHT=/sys/module/tx_isp_t41/parameters/daynight
+GPIO=/sys/class/gpio
+
+die() {
+	echo "daynight: $*" >&2
+	exit 1
+}
+
+# Read a variable out of the U-Boot environment, quietly: a board that does not
+# set one simply does not have that piece of hardware.
+env_get() {
+	fw_printenv -n "$1" 2>/dev/null
+}
+
+gpio_out() {
+	[ -d "$GPIO/gpio$1" ] || echo "$1" >"$GPIO/export" 2>/dev/null
+	[ -d "$GPIO/gpio$1" ] || return 1
+	echo out >"$GPIO/gpio$1/direction" 2>/dev/null
+	echo 0 >"$GPIO/gpio$1/active_low" 2>/dev/null
+	return 0
+}
+
+gpio_set() {
+	echo "$2" >"$GPIO/gpio$1/value" 2>/dev/null
+}
+
+# Move the filter. The solenoid latches, so it is driven only long enough to
+# throw and then released - holding it would burn the coil.
+#
+# Which pin means which way is a property of the board's wiring and is not
+# discoverable from software. If day and night come out swapped on some unit,
+# exchange the two numbers in gpio_ircut rather than editing this.
+ircut() {
+	set -- $(env_get gpio_ircut)
+	[ -n "$1" ] && [ -n "$2" ] || return 0
+
+	gpio_out "$1" || { echo "daynight: cannot claim gpio $1" >&2; return 1; }
+	gpio_out "$2" || { echo "daynight: cannot claim gpio $2" >&2; return 1; }
+
+	gpio_set "$1" 0
+	gpio_set "$2" 0
+	usleep 10000
+	if [ "$MODE" = night ]; then
+		gpio_set "$1" 0
+		gpio_set "$2" 1
+	else
+		gpio_set "$1" 1
+		gpio_set "$2" 0
+	fi
+	usleep 10000
+	gpio_set "$1" 0
+	gpio_set "$2" 0
+}
+
+illuminator() {
+	pin=$(env_get gpio_ir850)
+	[ -n "$pin" ] || return 0
+
+	gpio_out "$pin" || { echo "daynight: cannot claim gpio $pin" >&2; return 1; }
+
+	# Spelled out rather than "test && on || off": a failing write to the "on"
+	# branch would make the || fire and turn the illuminator off instead.
+	if [ "$MODE" = night ]; then
+		gpio_set "$pin" 1
+	else
+		gpio_set "$pin" 0
+	fi
+}
+
+# The ISP's own switch. 0 day, 1 night - the driver's numbering, exposed as a
+# module parameter because libimp's userspace route into it is broken. Writing it
+# takes effect on the live stream immediately, but only once the pipeline is
+# running: the firmware setter indexes a per-instance table that does not exist
+# before then, so a write while the stream is down is skipped rather than risked.
+isp() {
+	[ -w "$ISP_DAYNIGHT" ] || return 0
+	[ -e /proc/jz/isp ] || return 0
+
+	if [ "$MODE" = night ]; then
+		echo 1 >"$ISP_DAYNIGHT"
+	else
+		echo 0 >"$ISP_DAYNIGHT"
+	fi
+}
+
+status() {
+	printf 'mode      : '
+	if [ -r "$ISP_DAYNIGHT" ]; then
+		[ "$(cat "$ISP_DAYNIGHT")" = 1 ] && echo night || echo day
+	else
+		echo "unknown (no $ISP_DAYNIGHT)"
+	fi
+	printf 'ircut pins: %s\n' "$(env_get gpio_ircut || echo unset)"
+	printf 'ir850 pin : %s\n' "$(env_get gpio_ir850 || echo unset)"
+}
+
+case "$1" in
+day|night)
+	MODE=$1
+	ircut
+	illuminator
+	isp
+	;;
+status)
+	status
+	;;
+*)
+	echo "usage: $(basename "$0") day|night|status" >&2
+	exit 2
+	;;
+esac

@@ -64,7 +64,8 @@ define INGENIC_OSDRV_T41_INSTALL_TARGET_CMDS
 
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/usr/bin
 	$(INSTALL) -m 755 -t $(TARGET_DIR)/usr/bin \
-		$(INGENIC_OSDRV_T41_PKGDIR)/files/script/load_ingenic
+		$(INGENIC_OSDRV_T41_PKGDIR)/files/script/load_ingenic \
+		$(INGENIC_OSDRV_T41_PKGDIR)/files/script/daynight
 # Bake in the sensor this image was built for. It is the last resort in
 # load_ingenic, used when the u-boot environment names no sensor and sinfo
 # cannot identify one - which is what happens on an untouched camera, because
