@@ -23,12 +23,42 @@ BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_TARBALL=y
 BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="https://github.com/openipc/linux/archive/$(OPENIPC_KERNEL).tar.gz"
 BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
-BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(EXTERNAL_VENDOR)/board/$(OPENIPC_SOC_FAMILY)/t41nq.generic.config"
+# board/t41, not board/$(OPENIPC_SOC_FAMILY). SOC_FAMILY has to stay "t40"
+# because it selects the kernel tarball and the toolchain release, and neither
+# an ingenic-t41 branch nor a toolchain.ingenic-t41 exists to point it at. That
+# is a packaging constraint, not a statement about the silicon, so the board
+# files live under their own name and the two are deliberately decoupled.
+BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(EXTERNAL_VENDOR)/board/t41/t41nq.generic.config"
 BR2_LINUX_KERNEL_LZMA=y
 # $(EXTERNAL_VENDOR) cannot be used here: it is defined in general/external.mk,
 # which buildroot includes only after package/pkg-generic.mk has already checked
 # that every directory named here exists. $(BR2_EXTERNAL) is set early enough.
 BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL)/package/all-patches $(BR2_EXTERNAL)/../br-ext-chip-ingenic/patches-t41"
+
+# U-Boot
+# OpenIPC has no working T41 bootloader, so the board ships its own. It is built
+# here, by OpenIPC's own buildroot and toolchain, rather than being fetched
+# prebuilt from anywhere else.
+#
+# The source is the stock upstream u-boot 2026.07 release tarball from denx.
+# T41 needs it: the 2013-era vendor u-boot that OpenIPC's other Ingenic boards
+# use has no XBurst2 T41 support at all. Ingenic T-series support arrives as the
+# patch series in patches-t41/uboot/2026.07 - see the PROVENANCE.md there.
+#
+# -j1 because the SPL and the LZMA-compressed payload are stitched together by
+# rules that race under parallel make; the failure is an occasional short image
+# rather than an error, so it is not worth the seconds saved.
+BR2_TARGET_UBOOT=y
+BR2_TARGET_UBOOT_BUILD_SYSTEM_KCONFIG=y
+BR2_TARGET_UBOOT_CUSTOM_VERSION=y
+BR2_TARGET_UBOOT_CUSTOM_VERSION_VALUE="2026.07"
+BR2_TARGET_UBOOT_USE_DEFCONFIG=y
+BR2_TARGET_UBOOT_BOARD_DEFCONFIG="isvp_t41nq_sfcnor"
+BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES="$(EXTERNAL_VENDOR)/board/t41/t41nq.uboot.config"
+BR2_TARGET_UBOOT_NEEDS_XXD=y
+BR2_TARGET_UBOOT_FORMAT_CUSTOM=y
+BR2_TARGET_UBOOT_FORMAT_CUSTOM_NAME="u-boot-with-spl-lzma.bin"
+BR2_TARGET_UBOOT_CUSTOM_MAKEOPTS="-j1"
 
 # Filesystem
 BR2_PACKAGE_BUSYBOX_CONFIG="$(BR2_EXTERNAL)/package/busybox/busybox.config"

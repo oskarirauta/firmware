@@ -6,7 +6,7 @@ Subject: [PATCH 110/111] mfd: ingenic_adc_aux: add an 'invert' module param
 
 Some boards wire the day/night photoresistor so that bright light reads
 LOW and darkness reads HIGH - the inverse of what consumers expect. On
-the DML16-Z533 T41NQ used to develop this port, AUX0 measures 0 in
+the Ingenic T41 board used to develop this port, AUX0 measures 0 in
 bright light and about 14997 of a ~17995 full scale in the dark.
 Userspace day/night triggers assume higher = brighter and have no invert
 option, so with this wiring they never switch.

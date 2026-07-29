@@ -1,0 +1,199 @@
+From: Oskari Rauta <oskari.rauta@gmail.com>
+Subject: [PATCH] isvp-t41: add a built-in default environment for the T41NQ
+
+A board whose environment sector is blank or corrupt has to boot from the
+environment compiled into u-boot, because at that point there is no Linux and
+so no fw_setenv to repair it with. Without this the T41NQ reaches the u-boot
+prompt and stops there.
+
+Names and structure follow OpenIPC's own bootloaders rather than the vendor's,
+so a user's muscle memory carries over: baseaddr rather than loadaddr, bootargs
+behind a setargs indirection, uknor16m / urnor16m to update over tftp, and
+clroverlay to wipe the overlay.
+
+Nothing user-specific, network-specific or unit-specific is included. ethaddr in
+particular must be absent: XBURST_MAC_FROM_EFUSE derives a stable per-unit MAC
+from the SoC's eFUSE chip serial, and it yields to an environment that already
+provides one. wlandev is left out for the same class of reason - it names the
+wifi driver, which varies between T41 boards, and setting it also moves eth0 off
+DHCP onto a static fallback address.
+
+u-boot's own .env mechanism is used rather than buildroot's
+BR2_TARGET_UBOOT_DEFAULT_ENV_FILE: the file then lives in the source tree and is
+version controlled with everything else. The buildroot option points at an
+absolute path, and when that path is a generated file the environment is
+silently dropped on the next clean build - which is exactly what happened while
+this port was being developed.
+
+The file is selected by CONFIG_ENV_SOURCE_FILE="isvp-t41nq" rather than being
+named after SYS_BOARD, so the other T41 variants sharing board/ingenic/isvp-t41
+are unaffected.
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+---
+ board/ingenic/isvp-t41/isvp-t41nq.env | 157 ++++++++++++++++++++
+ 1 file changed, 157 insertions(+)
+ create mode 100644 board/ingenic/isvp-t41/isvp-t41nq.env
+
+diff --git a/board/ingenic/isvp-t41/isvp-t41nq.env b/board/ingenic/isvp-t41/isvp-t41nq.env
+new file mode 100644
+--- /dev/null
++++ b/board/ingenic/isvp-t41/isvp-t41nq.env
+@@ -0,0 +1,157 @@
++# Built-in default environment for the T41NQ (GC5603, 16 MiB SPI NOR).
++#
++# This is what the board boots with when its environment sector is blank or has
++# been erased - a fresh flash, or a bad write to the env block. Everything
++# needed to reach a shell has to be here, because at that point there is no
++# Linux and so no fw_setenv to repair it with.
++#
++# It is installed with CONFIG_ENV_USE_DEFAULT_ENV_TEXT_FILE, which REPLACES
++# U-Boot's generated default environment rather than adding to it. That is
++# deliberate: the generated one also carries bootdelay, loadaddr, mtdids and
++# usb_ignorelist, none of which this board uses and two of which would be empty.
++# What is listed below is therefore the whole environment, with nothing behind
++# it. bootdelay and baudrate are safe to omit because the code falls back to
++# their Kconfig values (common/autoboot.c, common/board_f.c).
++#
++# Note this file is NOT preprocessed - it is read by filechk_defaultenv.h, which
++# simply drops lines starting with '#' and empty lines. So comments are '#', not
++# C style, and ${...} stays literal.
++#
++# Names and structure follow OpenIPC's bootloaders so a user's muscle memory
++# works: baseaddr, bootargs behind a setargs indirection, uknor16m / urnor16m.
++#
++# Offsets are measured from a working camera, not assumed. They do not match
++# OpenIPC's Goke layout and cannot: Goke puts the env at 0x40000 behind a 256k
++# boot partition, and this u-boot image is ~0x41800 bytes, which does not fit in
++# 256k. Hence a 320k boot partition and everything after it shifted up.
++#
++#   0x000000  320k   boot          SPL + u-boot
++#   0x050000   64k   env           this environment
++#   0x060000  2240k  kernel        uImage.t41
++#   0x290000  8192k  rootfs        rootfs.squashfs.t41
++#   0xA90000  5568k  rootfs_data   overlay
++#                    ------------
++#                    16384k        exactly 16 MiB
++
++# console
++baudrate=115200
++serialport=ttyS1
++panic_timeout=2
++
++# Memory split. osmem/rmem/nmem are what the kernel is given; totalmem is what
++# OpenIPC's userspace reports and several of its scripts read. 74+46+8 = 128.
++osmem=74M@0x0
++rmem=46M@0x4a00000
++nmem=8M@0x7800000
++totalmem=128M
++
++# baseaddr is OpenIPC's name for the DRAM scratch buffer images are loaded into
++# before being written to flash, and the address the kernel is read to before
++# bootm. OpenIPC's bootloaders have no loadaddr, so there is none here either -
++# one name for one address, with nothing to drift out of step. U-Boot's own net
++# commands read "loadaddr" when no address is given, but every command below
++# passes one explicitly.
++flash_len=0x1000000
++baseaddr=0x80600000
++kern_addr=0x60000
++kern_size=0x230000
++
++# The partition holding the overlay must be called exactly "rootfs_data":
++# general/overlay/init greps /proc/mtd for that name and usr/sbin/sysupgrade
++# looks its targets up the same way. Called anything else the jffs2 mount fails
++# and the overlay silently falls back to tmpfs - every setting is then lost on
++# reboot, with nothing in the log to say why.
++#
++# "jz_sfc" is not a name we choose either: the mtd-id must equal the name the
++# kernel driver already gave the MTD, or cmdlinepart matches nothing and the
++# chip comes up unpartitioned. OpenIPC's ingenic_sfc driver calls it jz_sfc.
++mtdparts=jz_sfc:320k(boot),64k(env),2240k(kernel),8192k(rootfs),5568k(rootfs_data)
++
++# boot - init=/init is OpenIPC's own overlay setup script
++root=/dev/mtdblock3
++rootfstype=squashfs
++init=/init
++bootargs=mem=${osmem} rmem=${rmem} nmem=${nmem} console=${serialport},${baudrate}n8 panic=${panic_timeout} root=${root} rootfstype=${rootfstype} init=${init} mtdparts=${mtdparts} ${extras}
++bootcmd=setenv setargs setenv bootargs ${bootargs}; run setargs; sf probe; sf read ${baseaddr} ${kern_addr} ${kern_size}; bootm ${baseaddr}
++
++# Boot a development rootfs over NFS instead, the way OpenIPC's boards do.
++nfsroot=/srv/nfs/t41nq
++bootargsnfs=mem=${osmem} rmem=${rmem} nmem=${nmem} console=${serialport},${baudrate}n8 panic=${panic_timeout} root=/dev/nfs rootfstype=nfs ip=${ipaddr}:::255.255.255.0::eth0 nfsroot=${serverip}:${nfsroot},v3,nolock rw ${extras}
++bootnfs=setenv setargs setenv bootargs ${bootargsnfs}; run setargs; tftpboot ${baseaddr} uImage.${soc}; bootm ${baseaddr}
++
++# soc and sensor are what load_ingenic reads to pick its modules, and soc also
++# selects the image names below. It is "t41", not "t41nq", because SOC_MODEL
++# names the driver directory and the module names shared by every T41 SKU; the
++# board-specific part lives in the defconfig name and the device tree. A blank
++# environment must still name both, or the camera comes up with no video and
++# nothing explaining why.
++soc=t41
++sensor=gc5603
++
++# This board's LEDs and IR-cut, as plain GPIOs.
++gpio_default=81o 82o
++gpio_ir850=81
++gpio_ircut=49 50
++gpio_white=82
++
++# Update over tftp. OpenIPC's names, this board's offsets.
++#
++# "&&" between every step, unlike Goke's environment which separates erase from
++# write with ';'. A failed erase must not be followed by a write, and a failed
++# tftp must not be followed by either - that is the one way this sequence can
++# kill a camera that was working a moment earlier.
++#
++# "sf update" rather than "sf erase" + "sf write": it erases, writes and
++# verifies in one step, skips blocks that already match, and prints
++# "Updating, N%" as it goes (cmd/sf.c). A multi-second flash write is otherwise
++# completely silent, with no way to tell a slow write apart from a hang - and on
++# a bootloader write that is exactly when you want to see progress.
++#
++# It takes the PARTITION length rather than ${filesize}, which is what makes the
++# mw.b prefill load-bearing: it puts 0xff behind the image so the tail of the
++# partition ends up erased rather than holding whatever DRAM contained.
++uknor16m=mw.b ${baseaddr} ff 1000000; tftpboot ${baseaddr} uImage.${soc} && sf probe && sf update ${baseaddr} ${kern_addr} ${kern_size}
++urnor16m=mw.b ${baseaddr} ff 1000000; tftpboot ${baseaddr} rootfs.squashfs.${soc} && sf probe && sf update ${baseaddr} 0x290000 0x800000
++
++# uunor16m rewrites the bootloader that is currently running, so it is the one
++# command here that can leave the board unbootable. Run dunor16m first and keep
++# the copy: with the case closed there is no other way back.
++uunor16m=mw.b ${baseaddr} ff 1000000; tftpboot ${baseaddr} u-boot-with-spl-lzma.bin.${soc} && sf probe && sf update ${baseaddr} 0x0 0x50000
++
++# Read a partition back out to the tftp server BEFORE overwriting it. On an
++# assembled camera this is the only backup route there is: no SOIC programmer,
++# and the single USB port is permanently occupied by the wifi card.
++dknor16m=sf probe && sf read ${baseaddr} ${kern_addr} ${kern_size} && tftpput ${baseaddr} ${kern_size} kernel-backup.bin
++drnor16m=sf probe && sf read ${baseaddr} 0x290000 0x800000 && tftpput ${baseaddr} 0x800000 rootfs-backup.bin
++dunor16m=sf probe && sf read ${baseaddr} 0x0 0x50000 && tftpput ${baseaddr} 0x50000 uboot-backup.bin
++
++# Deliberately absent, and each for a reason:
++#
++#   ethaddr           MUST NOT be set here. misc_init_r() in
++#                     arch/mips/mach-xburst/ethaddr.c derives a stable per-unit
++#                     MAC from the SoC's eFUSE chip serial - the same derivation
++#                     Linux uses, so bootloader and OS agree and DHCP
++#                     reservations survive the hand-off. Its first line is "a
++#                     MAC provisioned in the environment always wins": set
++#                     ethaddr here and the eFUSE is never consulted, and every
++#                     camera flashed with this image shares one address.
++#   wlandev           names the wifi driver, so it is per unit: this bootloader
++#                     is for T41 boards in general and they do not all carry the
++#                     same card. It also changes ethernet - S40network runs a
++#                     plain "ifup eth0" when wlandev is unset, but takes the
++#                     wireless path when it is set, and that path gives eth0 a
++#                     static ${netaddr_fallback:-192.168.2.10} instead of a DHCP
++#                     lease. Worst case the named driver is not the card that is
++#                     fitted: wlan0 never comes up either and the camera is on no
++#                     reachable network at all, which on an assembled unit means
++#                     opening the case to get back in.
++#   wlanssid, wlanpass
++#                     credentials, and per-installation.
++#   ipaddr, serverip, netmask, gatewayip, netaddr_fallback
++#                     user- and network-specific; set them by hand before using
++#                     tftp or NFS.
++#   an overlay-wipe   a one-liner to erase the rootfs_data partition is handy
++#                     while testing, but it is a personal convenience rather
++#                     than something a shipped bootloader should carry - and one
++#                     wrong offset in it erases the wrong partition. Add it per
++#                     unit with fw_setenv if you want it.
