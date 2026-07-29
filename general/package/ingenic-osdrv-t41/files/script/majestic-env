@@ -1,0 +1,14 @@
+# Board environment for majestic on T41. Sourced by S95majestic.
+#
+# OpenIPC builds majestic per SOC_FAMILY and T41 rides the t40 family, so the
+# binary is majestic.t40 while the MPP libraries under it are T41's. They
+# disagree about two structures, and without the shim IMP_Encoder_CreateChn()
+# refuses the block majestic hands it and the encoder never starts. See
+# files/src/imp_t41_shim.c for what it reconciles and how it was measured.
+#
+# This lives here rather than in the init script so that S95majestic stays a
+# base file with no board conditionals in it.
+
+if [ -f /usr/lib/libimp_t41_shim.so ]; then
+	export LD_PRELOAD=/usr/lib/libimp_t41_shim.so
+fi

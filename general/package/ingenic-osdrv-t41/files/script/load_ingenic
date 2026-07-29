@@ -1,0 +1,147 @@
+#!/bin/sh
+
+KMOD_PATH=/lib/modules/$(uname -r)/ingenic
+
+# The environment is authoritative, ipcinfo is the fallback - the reverse of
+# what the t20/t31/t40 scripts do. Two reasons. ipcinfo reports the SoC family
+# from silicon, and a T41 announces the same generation as a T40 in
+# 0x1300002C, so on some parts it answers "t40" - successfully, which means an
+# "ipcinfo -f || fw_printenv -n soc" fallback never fires. And an explicit
+# setting made by whoever installed the firmware should win over a guess.
+# ingenic-osdrv-t30 already reads the environment directly.
+SOC=$(fw_printenv -n soc 2>/dev/null)
+[ -z "$SOC" ] && SOC=$(ipcinfo -f)
+vendor=$(ipcinfo -v)
+
+if [ ! -f /usr/sbin/sensor_cli ]; then
+	ln -s /usr/sbin/extutils /usr/sbin/sensor_cli
+fi
+
+echo 1 >/proc/sys/vm/overcommit_memory
+
+log_vendor() {
+	logger -s -p daemon.info -t ${vendor} "$1"
+}
+
+check_return() {
+	if [ $? -ne 0 ]; then
+		echo err: $1
+		echo exit
+		exit
+	fi
+}
+
+lsmod | grep "sinfo" >/dev/null
+if [ $? -ne 0 ]; then
+	modprobe sinfo
+	check_return "insmod sinfo"
+fi
+
+if fw_printenv -n sensor >/dev/null 2>&1; then
+	export SENSOR=$(fw_printenv -n sensor)
+	log_vendor "Get data from environment and set SENSOR as ${SENSOR}"
+else
+	echo 1 >/proc/jz/sinfo/info
+	check_return "start sinfo"
+	SENSOR_INFO=$(cat /proc/jz/sinfo/info)
+	check_return "get sensor type"
+	SENSOR=${SENSOR_INFO#*:}
+	if [ "sensor not found" = "$SENSOR" ]; then
+		# sinfo cannot name this one. Its table stops at gc4663 for
+		# GalaxyCore and has no gc5603 at all, and its clock names are the
+		# older cgu_cim/div_cim rather than T41's, so an untouched camera
+		# lands here every time. Left as it was, SENSOR stays empty and the
+		# modprobe below asks for "sensor__t41", which does not exist: the
+		# camera comes up with no image and nothing says why.
+		#
+		# Fall back to the sensor this image was built for. That is not a
+		# guess - the build ships exactly one sensor driver and one ISP
+		# tuning file, so it is the only sensor this image could drive.
+		# Nothing is written to the environment: the value comes from the
+		# image, so it is the same on every boot without persisting anything.
+		SENSOR="@SNS_MODEL@"
+		export SENSOR
+		log_vendor "sinfo found no sensor, using the built-in default ${SENSOR}"
+	else
+		export SENSOR
+		log_vendor "Get data from sinfo and set SENSOR as ${SENSOR}"
+		fw_setenv sensor $SENSOR && log_vendor "Write detected ${SENSOR} to U-Boot ENV"
+	fi
+fi
+
+# gc5603 wants a true 27 MHz MCLK, which on T41 comes from VPLL (1080/40).
+# AVPU is clocked from sclka here rather than the vpll/654 MHz the T40 script
+# uses; these are the values the vendor firmware for this board runs with.
+case ${SENSOR} in
+"gc5603")
+	AVPU_PARAM="clk_name=sclka avpu_clk=550000000"
+	ISP_PARAM="direct_mode=0"
+	# The sensor reset is on PA18 on this board. majestic has no setting for
+	# it and passes -1, so the driver takes it as a module parameter instead.
+	SENSOR_PARAM="reset_gpio=18"
+	;;
+*)
+	AVPU_PARAM="clk_name=sclka avpu_clk=550000000"
+	ISP_PARAM="direct_mode=0"
+	SENSOR_PARAM=""
+	;;
+esac
+
+# Image orientation lives in the sensor on T41: its libimp exports no
+# IMP_ISP_Tuning_SetISPHflip/Vflip, so majestic's mirror and flip settings have
+# nothing to drive. Take it from the environment instead.
+#   0 none, 1 mirror, 2 flip, 3 mirror+flip (180 degrees)
+SENSOR_FLIP=$(fw_printenv -n sensor_flip 2>/dev/null)
+if [ -n "$SENSOR_FLIP" ]; then
+	SENSOR_PARAM="$SENSOR_PARAM shvflip=$SENSOR_FLIP"
+fi
+
+echo --------------------
+echo "SOC: ${SOC}"
+echo "AVPU_PARAM: ${AVPU_PARAM}"
+echo "ISP_PARAM: ${ISP_PARAM}"
+echo "SENSOR: ${SENSOR}"
+echo "SENSOR_PARAM: ${SENSOR_PARAM}"
+echo --------------------
+
+lsmod | grep "avpu" >/dev/null
+if [ $? -ne 0 ]; then
+	modprobe avpu ${AVPU_PARAM}
+	check_return "insmod avpu"
+fi
+
+lsmod | grep "tx_isp" >/dev/null
+if [ $? -ne 0 ]; then
+	modprobe tx-isp-${SOC} ${ISP_PARAM}
+	check_return "insmod isp drv"
+fi
+
+lsmod | grep ${SENSOR} >/dev/null
+if [ $? -ne 0 ]; then
+	modprobe sensor_${SENSOR}_${SOC} ${SENSOR_PARAM}
+	check_return "insmod sensor drv"
+fi
+
+lsmod | grep "audio" >/dev/null
+if [ $? -ne 0 ]; then
+	modprobe audio spk_gpio=-1 spk_level=1
+	check_return "insmod audio"
+fi
+
+lsmod | grep "gpio" >/dev/null
+if [ $? -ne 0 ]; then
+	modprobe gpio
+	check_return "insmod gpio"
+fi
+
+# The GPIO claims come from majestic's configuration, so there is nothing to
+# claim before majestic is installed. Without this guard cli prints
+# "Failed to open input file /etc/majestic.yaml" once per GPIO at every boot.
+if [ ! -z "$(lsmod | grep "gpio")" ] && [ -f /etc/majestic.yaml ]; then
+	GPIOS=".nightMode.irCutPin1 .nightMode.irCutPin2 .nightMode.irSensorPin .nightMode.backlightPin .audio.speakerPin"
+	for GPIO in $(echo ${GPIOS})
+	do
+		G=$(cli -g ${GPIO})
+		[ ! -z "${G}" ] && echo ${G} > /proc/gpio_claim/gpio
+	done
+fi

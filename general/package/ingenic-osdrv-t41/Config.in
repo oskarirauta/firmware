@@ -1,0 +1,13 @@
+config BR2_PACKAGE_INGENIC_OSDRV_T41
+	bool "ingenic-osdrv-t41"
+	select BR2_PACKAGE_INGENIC_OPENSDK
+	select BR2_PACKAGE_UCLIBC_COMPAT
+	help
+	  ingenic-osdrv-t41 - Ingenic T41 libs, sensor data and module loader
+
+	  The kernel modules themselves are built from source by
+	  ingenic-opensdk; this package carries the userspace MPP
+	  libraries, the sensor description and ISP tuning data, and
+	  the load_ingenic script.
+
+	  https://openipc.org
