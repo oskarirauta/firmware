@@ -1,0 +1,35 @@
+sensors: t41: gc5603: fix the doubled source path
+
+DIR already ends in the sensor name and SRCS appends it again, so the
+build looks for
+
+    sensors/t41/gc5603/gc5603/gc5603.c
+
+while the file is at sensors/t41/gc5603/gc5603.c, and make stops with
+"No rule to make target .../gc5603/gc5603/gc5603.o".
+
+The intended form is DIR=sensors/$(SOC), which is what t20/sp2307/Kbuild
+- the one Kbuild in this repo that is not affected - still has. In every
+other sensor Kbuild the sensor name was added to DIR without being
+removed from SRCS. No sensor directory anywhere in the tree contains a
+nested directory of the same name, so this affects all 257 sensor
+Kbuilds across every SoC, not just T41; only the one this board needs is
+changed here.
+
+Upstream: https://github.com/openipc/openingenic
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+
+diff --git a/kernel/sensors/t41/gc5603/Kbuild b/kernel/sensors/t41/gc5603/Kbuild
+index ddd87cf..65c5785 100644
+--- a/kernel/sensors/t41/gc5603/Kbuild
++++ b/kernel/sensors/t41/gc5603/Kbuild
+@@ -1,7 +1,7 @@
+ MODULE_NAME := sensor_gc5603_$(SOC)
+ OUT := $(MODULE_NAME)
+ 
+-DIR=sensors/$(SOC)/gc5603
++DIR=sensors/$(SOC)
+ 
+ SRCS := $(DIR)/gc5603/gc5603.c
+ 

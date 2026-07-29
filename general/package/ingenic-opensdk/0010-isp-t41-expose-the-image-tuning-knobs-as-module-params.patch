@@ -1,0 +1,126 @@
+isp: t41: expose the image tuning knobs as module parameters
+
+The ISP's brightness, contrast, saturation, sharpness and hue setters live in
+the firmware archive linked into this module and are ordinary global symbols in
+the finished object, but nothing in the open sources declares them, so they are
+unreachable from the kernel side and there is no other way in.
+
+That matters on T41 because the userspace route is broken. IMP_ISP_Tuning_Set*
+returns -4084 for every value, before the encoder starts, after it starts, and
+while frames are flowing; disassembling libimp traces it to get_isptuningdev()
+handing back a NULL device, even though an open() trace shows the library
+holding /dev/isp-m0 on a live descriptor. IMP_ISP_Tuning_SetISPRunningMode is
+built identically, so day/night switching is unreachable for the same reason.
+Nothing above this module can repair that, and everything below it works.
+
+Day/night belongs here for the same reason: majestic's /night/on endpoint drives
+it through IMP_ISP_Tuning_SetISPRunningMode, which fails in exactly the same
+way, so the mode cannot be changed from userspace at all.
+
+Declare the setters the way tx_isp_init() is already declared here, and expose
+them as writable module parameters so the pipeline can be tuned:
+
+    echo 204 > /sys/module/tx_isp_t41/parameters/brightness
+
+The first argument selects the ISP instance and is 0 on this SoC; values are
+0-255, matching the userspace API.
+
+Caveat, stated plainly: the setters index the firmware's per-instance table,
+which exists only once the ISP has been brought up, so a write before the
+pipeline is running dereferences an entry that is not there yet.
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+
+--- a/kernel/isp/t41/tx-isp-module.c
++++ b/kernel/isp/t41/tx-isp-module.c
+@@ -9,11 +9,90 @@
+ 
+ #include <linux/module.h>
+ #include <linux/kernel.h>
++#include <linux/moduleparam.h>
+ #include <linux/version.h>
+ 
+ extern int tx_isp_init(void);
+ extern void tx_isp_exit(void);
+ 
++/*
++ * Image tuning, reachable from userspace.
++ *
++ * The ISP's own setters live in the firmware archive that is linked into this
++ * module. They are ordinary global symbols in the finished object, so the open
++ * sources can call them; they were simply never declared, in the same way
++ * tx_isp_init() above is declared here rather than in a header.
++ *
++ * They are worth exposing because the userspace library's route to them does
++ * not work on T41: IMP_ISP_Tuning_Set* answers -4084 for every value at every
++ * point in the pipeline's life, which disassembly traces to get_isptuningdev()
++ * returning a NULL device - even though the library has /dev/isp-m0 open on a
++ * live descriptor. IMP_ISP_Tuning_SetISPRunningMode is built the same way, so
++ * day/night switching is out of reach for the same reason. Nothing above this
++ * module can fix that, and everything below it works.
++ *
++ * The first argument selects the ISP instance and is 0 on this SoC; the value
++ * is 0-255, matching the userspace API.
++ */
++extern int tisp_set_brightness(int isp, unsigned char value);
++extern int tisp_set_contrast(int isp, unsigned char value);
++extern int tisp_set_saturation(int isp, unsigned char value);
++extern int tisp_set_sharpness(int isp, unsigned char value);
++extern int tisp_set_hue(int isp, unsigned char value);
++
++/*
++ * Day/night is the same shape - an instance index and a mode - and is worth
++ * having here for the same reason: majestic's /night/on drives it through
++ * IMP_ISP_Tuning_SetISPRunningMode, which fails identically. 0 is day, 1 night.
++ */
++extern int tisp_day_or_night_s_ctrl(int isp, int mode);
++
++static unsigned char isp_brightness = 128;
++static unsigned char isp_contrast   = 128;
++static unsigned char isp_saturation = 128;
++static unsigned char isp_sharpness  = 128;
++static unsigned char isp_hue        = 128;
++static unsigned char isp_daynight   = 0;
++
++/*
++ * NOTE: these reach into the firmware's own per-instance table, which only
++ * exists once the ISP has been brought up. Writing one before the pipeline is
++ * running dereferences a table entry that is not there yet.
++ */
++#define TX_ISP_TUNING_KNOB(knob, setter)				\
++static int knob##_param_set(const char *val,				\
++			    const struct kernel_param *kp)		\
++{									\
++	unsigned char v;						\
++	int ret = kstrtou8(val, 0, &v);					\
++									\
++	if (ret)							\
++		return ret;						\
++									\
++	*(unsigned char *)kp->arg = v;					\
++	setter(0, v);							\
++	return 0;							\
++}									\
++static int knob##_param_get(char *buffer,				\
++			    const struct kernel_param *kp)		\
++{									\
++	return scnprintf(buffer, PAGE_SIZE, "%u\n",			\
++			 *(unsigned char *)kp->arg);			\
++}									\
++static const struct kernel_param_ops knob##_param_ops = {		\
++	.set = knob##_param_set,					\
++	.get = knob##_param_get,					\
++};									\
++module_param_cb(knob, &knob##_param_ops, &isp_##knob, 0644);		\
++MODULE_PARM_DESC(knob, #knob " 0-255, applied to the ISP immediately")
++
++TX_ISP_TUNING_KNOB(brightness, tisp_set_brightness);
++TX_ISP_TUNING_KNOB(contrast,   tisp_set_contrast);
++TX_ISP_TUNING_KNOB(saturation, tisp_set_saturation);
++TX_ISP_TUNING_KNOB(sharpness,  tisp_set_sharpness);
++TX_ISP_TUNING_KNOB(hue,        tisp_set_hue);
++TX_ISP_TUNING_KNOB(daynight,   tisp_day_or_night_s_ctrl);
++
+ static int __init tx_isp_module_init(void)
+ {
+ 	return tx_isp_init();

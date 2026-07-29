@@ -17,5 +17,14 @@ INGENIC_OPENSDK_MODULE_MAKE_OPTS = \
 	INSTALL_MOD_PATH=$(TARGET_DIR) \
 	INSTALL_MOD_DIR=ingenic
 
+# The T41 ISP firmware blobs carry a vendor-private bit in their MIPS e_flags
+# that binutils 2.40 refuses to merge. See clear-vendor-eflags.py for the full
+# explanation; it is a no-op for every other SoC.
+define INGENIC_OPENSDK_CLEAR_VENDOR_EFLAGS
+	$(Q)python3 $(INGENIC_OPENSDK_PKGDIR)/clear-vendor-eflags.py \
+		$(wildcard $(@D)/kernel/isp/t41/libt41-firmware-*.a)
+endef
+INGENIC_OPENSDK_POST_PATCH_HOOKS += INGENIC_OPENSDK_CLEAR_VENDOR_EFLAGS
+
 $(eval $(kernel-module))
 $(eval $(generic-package))

@@ -1,0 +1,22 @@
+isp: t41: name the module after its own SoC, not t40
+
+kernel/isp/t41/Kbuild sets MODULE_NAME to tx-isp-t40, copied from the t40
+directory it was derived from, so a T41 build installs tx-isp-t40.ko.
+
+load_ingenic probes the module as tx-isp-${SOC}, so on T41 it looks for
+tx-isp-t41 and finds nothing. Every other ISP directory names the module
+after its own SoC; t10, t20 and t30 do it with $(SOC), which is used here
+too.
+
+Upstream: https://github.com/openipc/openingenic
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+
+--- a/kernel/isp/t41/Kbuild
++++ b/kernel/isp/t41/Kbuild
+@@ -1,4 +1,4 @@
+-MODULE_NAME := tx-isp-t40
++MODULE_NAME := tx-isp-$(SOC)
+ OUT := $(MODULE_NAME)
+
+ DIR=isp/$(SOC)

@@ -1,0 +1,34 @@
+misc: do not build the 3.10-era TCU modules on T40/T41
+
+sample_pwm and motor are both written against the 3.10-era Ingenic TCU
+API: they include <linux/mfd/jz_tcu.h> and call jz_tcu_enable_counter(),
+jz_tcu_config_chn() and friends. motor also wants <mach/platform.h>.
+
+None of those headers exists anywhere in the 4.4.94 XBurst2 kernel - not
+for T40, not for T41, not for X2000 - and nothing in that kernel includes
+jz_tcu.h either; it is a leftover. The 4.4.94 SoCs use
+drivers/mfd/ingenic-tcu.c and <linux/mfd/ingenic_tcu.h> instead. So the
+build stops at:
+
+    include/linux/mfd/jz_tcu.h:4:10: fatal error: soc/tcu.h: No such file or directory
+
+Both sit in the unconditional "ALL" section, so they break any T40 or T41
+build. Gate them the way the rest of this Kbuild gates T40/T41
+components. sinfo and gpio in the same section are fine.
+
+Upstream: https://github.com/openipc/openingenic
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+
+--- a/kernel/Kbuild
++++ b/kernel/Kbuild
+@@ -10,8 +10,10 @@
+ #### ALL #####
+ include $(src)/sinfo/Kbuild
+ include $(src)/gpio/Kbuild
++ifneq ($(CONFIG_SOC_T40)$(CONFIG_SOC_T41),y)
+ include $(src)/misc/sample_pwm/Kbuild
+ include $(src)/misc/motor/Kbuild
++endif
+ 
+ #### PLATFORM ####

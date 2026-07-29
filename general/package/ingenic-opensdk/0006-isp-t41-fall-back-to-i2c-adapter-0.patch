@@ -1,0 +1,63 @@
+isp: t41: fall back to i2c adapter 0 when the requested one is absent
+
+The i2c adapter the ISP binds the sensor to is chosen in userspace and
+passed down in the sensor info struct; nothing in the device tree or the
+driver sets it. T40 boards put the sensor on adapter 1 and T41 boards on
+adapter 0 - ipctool's own ingenic_open_i2c_fd() encodes exactly that
+split - so a userspace stack built for one family asks the other for a
+bus it does not have:
+
+    subdev_sensor_ops_register_sensor: Failed to get I2C adapter 1, deferring probe!!!
+    IMP_ISP_AddSensor failed [gc5603] / imp_system_init() failed
+
+Renumbering the bus in the device tree looks like the obvious answer and
+is a trap: drivers/i2c/busses/i2c-ingenic.c derives its clock gate name
+from the adapter id ("gate_i2c%d"), so a controller renumbered to 1 asks
+for gate_i2c1 while its gate is gate_i2c0, comes up unclocked, and every
+transfer ends in "--I2C pio write wait timeout".
+
+Handle it where the number is used instead: if the requested adapter does
+not exist, fall back to the first one and say so. A board that really has
+the requested bus is unaffected.
+
+Note the firmware blob carries a weak definition of this wrapper, so the
+strong one here is the one linked in.
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+
+diff --git a/kernel/isp/t41/tx-isp-funcs.c b/kernel/isp/t41/tx-isp-funcs.c
+index 7c08586..6a45b9b 100644
+--- a/kernel/isp/t41/tx-isp-funcs.c
++++ b/kernel/isp/t41/tx-isp-funcs.c
+@@ -508,7 +508,30 @@ EXPORT_SYMBOL(private_clk_set_rate);
+ /* i2c interfaces */
+ struct i2c_adapter* private_i2c_get_adapter(int nr)
+ {
+-	return i2c_get_adapter(nr);
++	struct i2c_adapter *adap = i2c_get_adapter(nr);
++
++	/*
++	 * The adapter number is chosen in userspace and handed to the ISP in
++	 * the sensor info struct. T40 boards put the sensor on adapter 1 and
++	 * T41 boards on adapter 0, so a userspace stack built for one family
++	 * asks for a bus the other does not have, and sensor registration
++	 * fails with "Failed to get I2C adapter N, deferring probe".
++	 *
++	 * Renumbering the bus in the device tree is not an option: the Ingenic
++	 * i2c driver derives its clock gate name from the adapter id
++	 * ("gate_i2c%d"), so a renumbered controller ends up enabling the wrong
++	 * gate and every transfer times out.
++	 *
++	 * If the requested adapter simply is not there, fall back to the first
++	 * one. On a board that has the requested bus nothing changes.
++	 */
++	if (!adap && nr != 0) {
++		adap = i2c_get_adapter(0);
++		if (adap)
++			ISP_WARNING("i2c adapter %d absent, using adapter 0\n", nr);
++	}
++
++	return adap;
+ }
+ 
+ void private_i2c_put_adapter(struct i2c_adapter *adap)

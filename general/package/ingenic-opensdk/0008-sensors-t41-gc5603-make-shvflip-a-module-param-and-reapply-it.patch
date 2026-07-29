@@ -1,0 +1,54 @@
+sensors: t41: gc5603: make shvflip settable and re-apply it at stream on
+
+Image orientation on T41 has to come from the sensor. The T41 libimp
+exports no IMP_ISP_Tuning_SetISPHflip/SetISPVflip - checked against the
+library we ship - so unlike the HiSilicon parts there is no ISP-side
+mirror or flip to fall back on, and majestic's orientation settings have
+nowhere to go.
+
+The driver already knows how: gc5603_set_hvflip() writes 0x022c, and
+probe copies shvflip into sensor->video.shvflip. But shvflip is a plain
+static initialised to 1, so it cannot be changed without editing the
+source, and the mode write in gc5603_s_stream() clears the mirror bits
+again on every stream on.
+
+Export it as a module parameter and re-apply it after the stream-on
+register block. The default is unchanged, so a board that was happy
+before stays happy.
+
+diff --git a/kernel/sensors/t41/gc5603/gc5603.c b/kernel/sensors/t41/gc5603/gc5603.c
+index 502dcc2..a550ad1 100644
+--- a/kernel/sensors/t41/gc5603/gc5603.c
++++ b/kernel/sensors/t41/gc5603/gc5603.c
+@@ -49,6 +49,8 @@ static int pwdn_gpio = SENSOR_GPIO_FROM_USERSPACE;
+ module_param(pwdn_gpio, int, 0444);
+ MODULE_PARM_DESC(pwdn_gpio, "sensor power-down GPIO: -2 take it from userspace (default), -1 none, >=0 force a pin");
+ static int shvflip = 1;
++module_param(shvflip, int, 0644);
++MODULE_PARM_DESC(shvflip, "sensor H/V flip: 0 none, 1 mirror, 2 flip, 3 mirror+flip (180 degrees)");
+ 
+ struct regval_list {
+ 	uint16_t reg_num;
+@@ -576,6 +578,8 @@ static int gc5603_init(struct tx_isp_subdev *sd, struct tx_isp_initarg *init)
+ 	return 0;
+ }
+ 
++static int gc5603_set_hvflip(struct tx_isp_subdev *sd, int enable);
++
+ static int gc5603_s_stream(struct tx_isp_subdev *sd, struct tx_isp_initarg *init)
+ {
+ 	int ret = 0;
+@@ -590,6 +594,13 @@ static int gc5603_s_stream(struct tx_isp_subdev *sd, struct tx_isp_initarg *init
+                 }
+                 if(sensor->video.state == TX_ISP_MODULE_RUNNING){
+                         ret = gc5603_write_array(sd, gc5603_stream_on);
++                        /*
++                         * The mirror/flip registers are cleared by the mode
++                         * write above, so re-apply them here. T41 has no
++                         * IMP_ISP_Tuning_SetISPHflip/Vflip, so the sensor is
++                         * the only place image orientation can be set.
++                         */
++                        gc5603_set_hvflip(sd, shvflip);
+                         ISP_WARNING("gc5603 stream on\n");
+                 }
+ 	} else {

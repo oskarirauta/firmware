@@ -1,0 +1,62 @@
+t41: select the firmware archive from CONFIG_KERNEL_4_4_94, not the build path
+
+isp/t41 and misc/mpsys-driver each ship two prebuilt firmware archives,
+one for 3.10.14 and one for 4.4.94, and pick between them with
+
+    ifeq ($(findstring 4.4.94,$(KDIR)),4.4.94)
+
+That is, by looking for the version string in the kernel build directory
+path. Buildroot builds the kernel in a directory called "linux-custom",
+which contains no version, so the test fails and the 3.10.14 archive is
+linked into a 4.4.94 module. The result is not a missing symbol but an
+ABI mismatch at link time:
+
+    libt41-firmware-3-10-14.a: uses different e_flags (0x1800) fields
+    than previous modules (0x1000)
+    failed to merge target specific data
+
+Use CONFIG_KERNEL_4_4_94 instead. It comes from the kernel's own .config
+through auto.conf, so it is correct regardless of where the tree is
+built. The path match is kept as a fallback so trees that do carry the
+version in their directory name keep working unchanged.
+
+Upstream: https://github.com/openipc/openingenic
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+
+diff --git a/kernel/isp/t41/Kbuild b/kernel/isp/t41/Kbuild
+index 72d535f..02ae5cb 100644
+--- a/kernel/isp/t41/Kbuild
++++ b/kernel/isp/t41/Kbuild
+@@ -9,7 +9,12 @@ SRCS := \
+ 
+ # Determine the kernel version based on SOC type and KDIR
+ ifeq ($(SOC),t41)
+-  ifeq ($(findstring 4.4.94,$(KDIR)),4.4.94)
++  # CONFIG_KERNEL_4_4_94 comes from the kernel .config via auto.conf and is
++  # authoritative. The KDIR string match is kept as a fallback for trees
++  # whose build directory happens to carry the version in its name.
++  ifeq ($(CONFIG_KERNEL_4_4_94),y)
++    KVERSION := 4-4-94
++  else ifeq ($(findstring 4.4.94,$(KDIR)),4.4.94)
+         KVERSION := 4-4-94
+   else
+         KVERSION := 3-10-14
+diff --git a/kernel/misc/mpsys-driver/Kbuild b/kernel/misc/mpsys-driver/Kbuild
+index c69e1dc..f432547 100644
+--- a/kernel/misc/mpsys-driver/Kbuild
++++ b/kernel/misc/mpsys-driver/Kbuild
+@@ -9,7 +9,12 @@ SRCS := \
+ 
+ # Determine the kernel version based on SOC type and KDIR
+ ifeq ($(SOC),t41)
+-  ifeq ($(findstring 4.4.94,$(KDIR)),4.4.94)
++  # CONFIG_KERNEL_4_4_94 comes from the kernel .config via auto.conf and is
++  # authoritative. The KDIR string match is kept as a fallback for trees
++  # whose build directory happens to carry the version in its name.
++  ifeq ($(CONFIG_KERNEL_4_4_94),y)
++    KVERSION := 4-4-94
++  else ifeq ($(findstring 4.4.94,$(KDIR)),4.4.94)
+ 	KVERSION := 4-4-94
+   else
+ 	KVERSION := 3-10-14

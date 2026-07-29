@@ -1,0 +1,31 @@
+jz-dtrng: take IRQ_DTRNG from the T41 dt-bindings header
+
+T40 already gets its interrupt number from
+<dt-bindings/interrupt-controller/t40-irq.h>; every other SoC falls
+through to <soc/irq.h>. That header does not exist for T41 - and in fact
+does not exist for T40 either, which is why T40 has its own branch. The
+XBurst2 SoC include directories only carry include/irq.h, not
+include/soc/irq.h. So a T41 build stops at:
+
+    jz-dtrng.c:31:10: fatal error: soc/irq.h: No such file or directory
+
+T41 has the same dt-bindings header, and it defines IRQ_DTRNG, so give
+T41 the same branch T40 has. Other SoCs are untouched.
+
+Upstream: https://github.com/openipc/openingenic
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+
+diff --git a/kernel/misc/jz-dtrng/jz-dtrng.c b/kernel/misc/jz-dtrng/jz-dtrng.c
+index 4323742..e9c3df5 100644
+--- a/kernel/misc/jz-dtrng/jz-dtrng.c
++++ b/kernel/misc/jz-dtrng/jz-dtrng.c
+@@ -27,6 +27,8 @@
+ #include <soc/base.h>
+ #ifdef CONFIG_SOC_T40
+ #include <dt-bindings/interrupt-controller/t40-irq.h>
++#elif defined(CONFIG_SOC_T41)
++#include <dt-bindings/interrupt-controller/t41-irq.h>
+ #else
+ #include <soc/irq.h>
+ #endif

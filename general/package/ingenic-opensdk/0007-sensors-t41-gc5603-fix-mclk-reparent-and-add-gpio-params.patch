@@ -1,0 +1,124 @@
+sensors: t41: gc5603: reparent the CIM mux so MCLK is really 27 MHz
+
+gc5603 is specified for a 27 MHz MCLK. On T41 the CIM mux comes up
+parented to sclka - APLL, 1104 MHz on this part - which has no integer
+path to 27 MHz, so the divider never gets there. Measured on hardware
+with the sensor failing to answer at all:
+
+    /proc/jz/clock/clocks:
+      mux_cim   1104.000MHz  enable  sclka
+      div_cim   1104.000MHz  enable  mux_cim
+
+    i2c i2c-0: --I2C TXABRT[0]=I2C_TXABRT_ABRT_7B_ADDR_NOACK
+    gc5603_detect: ret = -5, v = 0x00
+    chip found @ 0x31 (i2c0) is not an gc5603 chip
+
+SEN_TCLK (vpll, 1080 MHz) divides by exactly 40, which is why it is the
+clock this code already names.
+
+The reparent was there but could not report failure. clk_get() was passed
+straight into clk_set_parent() without being checked, clk_set_parent()'s
+return value was discarded, and the only thing that could produce an error
+message was a devm_clk_get() asking the i2c client - a device created by
+the ISP with no clocks property - for a clock named after SEN_TCLK, which
+can only ever fail. So a reparent that silently did nothing looked
+identical to one that worked.
+
+Check both steps, name the one that failed, and report the frequency the
+mclk actually ended up at.
+
+Also add reset_gpio and pwdn_gpio module parameters, defaulting to a
+sentinel that keeps the existing behaviour of taking the pins from the
+sensor info the userspace stack passes. Streamers differ in whether they
+know a board's sensor reset wiring - majestic has no setting for it and
+passes -1 - and a module parameter lets the board's own module loader
+supply it without the driver hardcoding anything.
+
+Upstream: https://github.com/openipc/openingenic
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+
+diff --git a/kernel/sensors/t41/gc5603/gc5603.c b/kernel/sensors/t41/gc5603/gc5603.c
+index dc19109..502dcc2 100644
+--- a/kernel/sensors/t41/gc5603/gc5603.c
++++ b/kernel/sensors/t41/gc5603/gc5603.c
+@@ -34,8 +34,20 @@
+ #define SENSOR_OUTPUT_MIN_FPS 5
+ #define SENSOR_VERSION	"H20221117a"
+ 
+-static int reset_gpio = GPIO_PC(27);
+-static int pwdn_gpio = -1;
++/*
++ * -2 means "use whatever the userspace stack passes in the sensor info".
++ * A board whose streamer does not know its reset wiring - majestic has no
++ * setting for it - can pass the pin as a module parameter instead.
++ */
++#define SENSOR_GPIO_FROM_USERSPACE (-2)
++
++static int reset_gpio = SENSOR_GPIO_FROM_USERSPACE;
++module_param(reset_gpio, int, 0444);
++MODULE_PARM_DESC(reset_gpio, "sensor reset GPIO: -2 take it from userspace (default), -1 none, >=0 force a pin");
++
++static int pwdn_gpio = SENSOR_GPIO_FROM_USERSPACE;
++module_param(pwdn_gpio, int, 0444);
++MODULE_PARM_DESC(pwdn_gpio, "sensor power-down GPIO: -2 take it from userspace (default), -1 none, >=0 force a pin");
+ static int shvflip = 1;
+ 
+ struct regval_list {
+@@ -722,25 +734,46 @@ static int sensor_attr_check(struct tx_isp_subdev *sd)
+ 		ISP_ERROR("Cannot get sensor input clock cgu_cim\n");
+ 		goto err_get_mclk;
+ 	}
++	/*
++	 * gc5603 is specified for a 27 MHz MCLK. On T41 the CIM mux comes up
++	 * parented to sclka (APLL, 1104 MHz on this part), which has no integer
++	 * path to 27 MHz, so the divider cannot reach it and the sensor is
++	 * clocked far too fast to answer on i2c at all. SEN_TCLK (vpll, 1080
++	 * MHz) divides by exactly 40.
++	 *
++	 * The previous form passed clk_get() straight into clk_set_parent()
++	 * without checking it, ignored the return value, and then asked the i2c
++	 * client - a device with no clocks property - for a clock named after
++	 * SEN_TCLK, so the only error it could ever report was that unrelated
++	 * lookup failing. Check both steps and say which one went wrong.
++	 */
+ 	rate = private_clk_get_rate(sensor->mclk);
+ 	if (((rate / 1000) % 27000) != 0) {
+-		ret = clk_set_parent(sclka, clk_get(NULL, SEN_TCLK));
+-		sclka = private_devm_clk_get(&client->dev, SEN_TCLK);
+-		if (IS_ERR(sclka)) {
+-			pr_err("get sclka failed\n");
++		struct clk *tclk = clk_get(NULL, SEN_TCLK);
++
++		if (IS_ERR_OR_NULL(tclk)) {
++			ISP_ERROR("cannot get %s, leaving the mclk parent alone\n", SEN_TCLK);
+ 		} else {
+-			rate = private_clk_get_rate(sclka);
+-			if (((rate / 1000) % 27000) != 0) {
+-				private_clk_set_rate(sclka, 891000000);
+-			}
++			ret = clk_set_parent(sclka, tclk);
++			if (ret)
++				ISP_ERROR("failed to reparent %s onto %s: %d\n",
++					  SEN_MCLK, SEN_TCLK, ret);
+ 		}
+ 	}
+ 
+ 	private_clk_set_rate(sensor->mclk, 27000000);
+ 	private_clk_prepare_enable(sensor->mclk);
+ 
+-	reset_gpio = info->rst_gpio;
+-	pwdn_gpio = info->pwdn_gpio;
++	rate = private_clk_get_rate(sensor->mclk);
++	if (((rate / 1000) % 27000) != 0)
++		ISP_ERROR("sensor mclk ended up at %lu Hz, not a multiple of 27 MHz\n", rate);
++	else
++		ISP_WARNING("sensor mclk %lu Hz\n", rate);
++
++	if (reset_gpio == SENSOR_GPIO_FROM_USERSPACE)
++		reset_gpio = info->rst_gpio;
++	if (pwdn_gpio == SENSOR_GPIO_FROM_USERSPACE)
++		pwdn_gpio = info->pwdn_gpio;
+ 
+ 	sensor_set_attr(sd, wsize);
+ 	sensor->priv = wsize;

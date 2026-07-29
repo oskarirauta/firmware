@@ -1,0 +1,46 @@
+sinfo: add the gc5603 to the T41 sensor table
+
+sinfo is what identifies the sensor when the u-boot environment does not name
+one, and its table has no gc5603, so on an untouched T41NQ camera
+/proc/jz/sinfo/info answers "sensor not found". load_ingenic then ends up with
+an empty SENSOR and asks modprobe for "sensor__t41", which does not exist: the
+camera boots with no image and nothing explains why.
+
+Every field is taken from this repository's own gc5603 driver, so the entry
+cannot drift from the driver that will bind, and all of it is confirmed against
+the camera's boot log:
+
+  address    0x31            sensors/t41/gc5603/gc5603.c: .cbus_device = 0x31
+                             "gc5603 chip found @ 0x31 (i2c0)"
+  registers  0x03f0, 0x03f1  gc5603_detect() reads exactly these two
+  values     0x56, 0x03      GC5603_CHIP_ID_H / _L, and the same pair appears in
+                             the detect log lines
+  clock      27 MHz          "sensor mclk 27000000 Hz"
+
+The entry goes at the head of the table rather than into the CONFIG_SOC_T41
+block at its tail, because probing is sequential and every candidate costs a
+clock setup, a reset pulse and a couple of i2c reads. From the tail, behind 103
+sensors that this SoC cannot have, a successful detection took over ten seconds
+on the camera; from the head it is immediate. The block is compiled out
+everywhere else, so no other SoC sees any change in probe order - which is why
+the existing tail block is left exactly where it is rather than moved.
+
+The mclk_name column is carried over from its neighbours for consistency only:
+sinfo overwrites it at run time, taking "div_cim" and reparenting "mux_cim" to
+vpll under CONFIG_SOC_T41 && CONFIG_KERNEL_4_4_94, so the value written here is
+never used on this SoC.
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+
+--- a/kernel/sinfo/sensor_info.c
++++ b/kernel/sinfo/sensor_info.c
+@@ -115,6 +115,9 @@
+ 
+ SENSOR_INFO_T g_sinfo[] =
+ {
++#ifdef CONFIG_SOC_T41
++	{"gc5603", 0x31,  "cgu_cim", 27000000, {0x56, 0x03}, 1, {0x03f0, 0x03f1}, 2, 2, NULL},
++#endif
+ 	{"ar0130", 0x10,  "cgu_cim", 24000000, {0x2402}, 2, {0x3000}, 2, 1, NULL},
+ 	{"ar0237", 0x10,  "cgu_cim", 27000000, {0x0256}, 2, {0x3000}, 2, 1, NULL},
+ 	{"bf3115", 0x6e,  "cgu_cim", 24000000, {0x31, 0x16}, 1, {0xfc, 0xfd}, 1, 2, NULL},
