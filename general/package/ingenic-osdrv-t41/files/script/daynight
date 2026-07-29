@@ -2,7 +2,7 @@
 #
 # daynight - switch the camera between day and night.
 #
-#   daynight day | night | status
+#   daynight day | night | auto | light | status
 #
 # Three things have to move together on this hardware, and this is the one place
 # that owns all three:
@@ -119,73 +119,96 @@ isp() {
 	fi
 }
 
-# The ambient-light reading. Channel 0 is where the photoresistor sits, and the
-# driver hands back a binary unsigned long rather than text, so od converts it.
+# How dark is it?
 #
-# POLARITY IS A CONTRACT: everything here assumes **higher means brighter**. That
-# is how this camera reads - measured by pointing a lamp at it and watching the
-# value rise. A board wired the other way round is normalised in the driver, not
-# here: ingenic_adc_aux takes an `invert` parameter which returns
-# (invert - reading), so setting it to just above full scale flips a
-# bright-is-low sensor into this convention and leaves the thresholds meaningful.
+# ONE CONVENTION, AND BOTH SOURCES FIT IT NATURALLY: **higher means darker**.
+# That is not a choice, it is what the hardware gives.
 #
-# The reading is noisy - a stable scene wanders over tens of units, and the raw
-# ADC step is about 4.3 of them - so a single sample must never decide anything.
+#   gain  the ISP's own auto-exposure analog gain, from /proc/jz/isp. It rises as
+#         the scene darkens - that is what gain is for. Available on every camera
+#         because it needs no extra component, so it is the default. It is also
+#         the quantity majestic documents its own minThreshold/maxThreshold as
+#         being compared against, and the same number the web UI shows.
+#
+#   adc   a photoresistor on SADC channel 0. Raw, it reads low in bright light and
+#         close to full scale in the dark, so it is already dark-high and needs no
+#         inversion here. The driver's `invert` parameter exists for majestic's
+#         adcReadout, which wants the opposite sense; leave it at 0 for this.
+#
+# Because both are dark-high, one threshold pair serves either source and there is
+# no polarity to get wrong.
 ADC=/dev/ingenic_adc_aux_0
-ADC_SAMPLES=9
+ISP_PROC=/proc/jz/isp
+SAMPLES=9
 
-adc_read() {
+adc_sample() {
 	[ -r "$ADC" ] || return 1
+	# A binary unsigned long, not text, so od converts it.
 	od -An -tu4 -N4 "$ADC" 2>/dev/null | tr -d ' \n'
 }
 
-# The median of several samples, not the mean: one wild reading shifts a mean but
-# cannot move a median, and wild readings are exactly what this sensor produces.
-adc_level() {
-	[ -r "$ADC" ] || return 1
-	i=0
-	while [ $i -lt $ADC_SAMPLES ]; do
-		adc_read
-		echo
-		i=$((i + 1))
-	done | sort -n | sed -n "$(( (ADC_SAMPLES + 1) / 2 ))p"
+gain_sample() {
+	[ -d "$ISP_PROC" ] || return 1
+	awk '/^AeAGain /{print $3; exit}' "$ISP_PROC"/* 2>/dev/null
 }
 
-# Decide from the light level. Two thresholds rather than one, with a dead band
-# between them, so a value sitting near the boundary cannot throw the filter back
-# and forth - each crossing costs a solenoid pulse and a visible jump in the
-# picture. Both are overridable from the U-Boot environment, because the right
-# numbers depend on the lens, the housing and where the camera is pointed.
+# Which source to use. Defaults to gain, which works without a photoresistor;
+# set dn_source=adc on a camera that has one and prefers it.
+darkness_source() {
+	src=$(env_get dn_source)
+	[ -n "$src" ] || src=gain
+	echo "$src"
+}
+
+# The median of several samples rather than one, and a median rather than a mean:
+# both readings wander, and one outlier must not be able to pulse the solenoid.
+darkness() {
+	src=$(darkness_source)
+	i=0
+	while [ $i -lt $SAMPLES ]; do
+		case "$src" in
+		adc)	adc_sample ;;
+		gain)	gain_sample ;;
+		*)	return 1 ;;
+		esac
+		echo
+		i=$((i + 1))
+	done | grep -E '^[0-9]+$' | sort -n | sed -n "$(( (SAMPLES + 1) / 2 ))p"
+}
+
+# Decide from how dark it is. Two thresholds with a dead band between them, so a
+# value sitting near the boundary cannot throw the filter back and forth - each
+# crossing costs a solenoid pulse and a visible jump in the picture.
 #
-# They are MANDATORY, with no defaults, and that is the safety property rather
-# than an omission. A camera whose photoresistor is not fitted reads a steady
-# near-zero - measured on this one, 4 to 35 units, which is 1 to 8 raw counts of
-# 4096 and does not move when the room lights go out. A working sensor spans
-# almost the whole 18000-unit scale. Any built-in threshold would therefore read
-# an absent sensor as pitch darkness and drive the camera to night in daylight,
-# which is exactly what a first attempt with invented defaults did.
+# The thresholds are MANDATORY, with no defaults, and that is a safety property
+# rather than an omission. Their right values depend on the source, the lens, the
+# housing and where the camera points; and a camera whose photoresistor is not
+# fitted reads a steady near-zero - measured on one here, 4 to 35 units, which is
+# 1 to 8 raw counts of 4096 and does not move when the room lights go out. Any
+# built-in number would read that as broad daylight or pitch darkness depending on
+# its sense, and act on it. A first attempt with invented defaults did exactly
+# that and drove the camera to night at noon.
 auto() {
-	value=$(adc_level)
+	value=$(darkness)
 	case "$value" in
 	''|*[!0-9]*)
-		die "no usable reading from $ADC - is a light sensor fitted?"
+		die "no usable reading from the '$(darkness_source)' source"
 		;;
 	esac
 
-	night_below=$(env_get dn_night_below)
-	day_above=$(env_get dn_day_above)
-	if [ -z "$night_below" ] || [ -z "$day_above" ]; then
-		die "auto needs thresholds: set dn_night_below and dn_day_above with
-       fw_setenv, after reading the light with '$(basename "$0") adc' in the
-       dark and in daylight. There are deliberately no defaults - a camera
-       with no photoresistor fitted reads a steady near-zero, which any
-       default would read as pitch darkness and switch to night at noon."
+	night_above=$(env_get dn_night_above)
+	day_below=$(env_get dn_day_below)
+	if [ -z "$night_above" ] || [ -z "$day_below" ]; then
+		die "auto needs thresholds: set dn_night_above and dn_day_below with
+       fw_setenv, after reading the level with '$(basename "$0") light' in
+       daylight and in the dark. Higher means darker. There are deliberately
+       no defaults - see the comment above this function."
 	fi
 
 	now=$(current_mode)
-	if [ "$value" -lt "$night_below" ]; then
+	if [ "$value" -gt "$night_above" ]; then
 		want=night
-	elif [ "$value" -gt "$day_above" ]; then
+	elif [ "$value" -lt "$day_below" ]; then
 		want=day
 	else
 		want=$now		# in the dead band: leave it where it is
@@ -196,7 +219,7 @@ auto() {
 	ircut
 	illuminator
 	isp
-	echo "daynight: light $value -> $want"
+	echo "daynight: darkness $value -> $want"
 }
 
 current_mode() {
@@ -213,7 +236,8 @@ status() {
 	else
 		printf 'mode      : unknown (no %s)\n' "$ISP_DAYNIGHT"
 	fi
-	printf 'light     : %s\n' "$(adc_level || echo 'no sensor')"
+	printf 'source    : %s\n' "$(darkness_source)"
+	printf 'darkness  : %s\n' "$(darkness || echo unavailable)"
 	printf 'ircut pins: %s\n' "$(env_get gpio_ircut || echo unset)"
 	printf 'ir850 pin : %s\n' "$(env_get gpio_ir850 || echo unset)"
 }
@@ -228,14 +252,14 @@ day|night)
 auto)
 	auto
 	;;
-adc)
-	adc_level || die "no reading from $ADC"
+light|adc)		# adc: the older name, kept working
+	darkness || die "no reading from the '$(darkness_source)' source"
 	;;
 status)
 	status
 	;;
 *)
-	echo "usage: $(basename "$0") day|night|auto|adc|status" >&2
+	echo "usage: $(basename "$0") day|night|auto|light|status" >&2
 	exit 2
 	;;
 esac
