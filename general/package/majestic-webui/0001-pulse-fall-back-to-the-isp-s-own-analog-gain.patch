@@ -1,0 +1,41 @@
+pulse: fall back to the ISP's own analog gain for the day/night reading
+
+The status page asks the streamer for the isp_again metric and hides the
+reading when it answers -1. On Ingenic it always answers -1: majestic never
+fills its ISP metric store there, and /metrics/isp is empty. So on those
+cameras the day/night value simply never appears - and the thresholds it exists
+to help choose, minThreshold and maxThreshold, are left to be guessed at.
+
+The number is available: the ISP publishes it in /proc/jz/isp as AeAGain. That
+is the same quantity, analog gain, which is what majestic's own help text says
+the thresholds are compared against - so a value read here is in the units the
+user will type into the settings, not a substitute scale.
+
+Consulted only when the streamer returned nothing or -1, and guarded on
+/proc/jz/isp existing, so no other platform changes behaviour or pays for the
+read.
+
+Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
+
+--- a/www/cgi-bin/j/pulse.cgi
++++ b/www/cgi-bin/j/pulse.cgi
+@@ -6,6 +6,19 @@
+ 	daynight_value=$(wget -q -T1 localhost/metrics/isp?value=isp_again -O -)
+ fi
+ 
++# On Ingenic the streamer never fills its ISP metric store, so isp_again answers
++# -1 and the day/night reading this page is built around never appears at all.
++# The ISP publishes the same quantity itself - analog gain, which is exactly what
++# minThreshold and maxThreshold are documented as being compared against - so the
++# number stays in the units the thresholds are chosen in. Consulted only when the
++# streamer has nothing to say, and guarded on the proc entry existing, so no other
++# platform changes behaviour or pays for the read.
++if [ -z "$daynight_value" ] || [ "$daynight_value" = "-1" ]; then
++	if [ -d /proc/jz/isp ]; then
++		daynight_value=$(awk '/^AeAGain /{print $3; exit}' /proc/jz/isp/* 2>/dev/null)
++	fi
++fi
++
+ if [ -n "$temp" ]; then
+ 	soc_temp="${temp%.*}°C"
+ fi

@@ -44,9 +44,34 @@ define MAJESTIC_WEBUI_FPV_FIXUP
 	rm $(TARGET_DIR)/usr/sbin/openwall
 endef
 
+# The settings page grows a live preview panel only when a tab holds at least
+# one property the schema marks "x-live". This majestic emits that flag nowhere
+# at all - `strings` finds no occurrence of it in the binary - so the panel can
+# never appear, and the image knobs have to be judged by switching to the
+# preview page and back. Saving them takes effect within a second or two on this
+# board, so seeing the result in place is worth having.
+#
+# Done as an edit rather than a patch because the file is minified onto one
+# line: a one-token change diffs as forty kilobytes. The anchor occurs exactly
+# once, and the result is verified so a future dist that moves it fails the
+# build here rather than silently dropping the panel.
+#
+# The anchor deliberately excludes the leading "return": sed's & is the whole
+# match, and including it produced "return X||return Y" - a syntax error that
+# took the whole script out and left the settings page stuck on "Loading
+# settings". The check below looks at the finished expression for that reason,
+# not merely for the inserted text.
+define MAJESTIC_WEBUI_SETTINGS_PREVIEW
+	$(SED) 's#e.sections.some((e=>{const n=#e.sections.includes("image")||&#' \
+		$(TARGET_DIR)/var/www/a/mj-settings.js
+	grep -q 'return e.sections.includes("image")||e.sections.some' \
+		$(TARGET_DIR)/var/www/a/mj-settings.js
+endef
+
 define MAJESTIC_WEBUI_INSTALL_TARGET_CMDS
 	$(MAJESTIC_WEBUI_INSTALL)
 	$(MAJESTIC_WEBUI_$(VERSION)_FIXUP)
+	$(MAJESTIC_WEBUI_SETTINGS_PREVIEW)
 endef
 
 $(eval $(generic-package))
