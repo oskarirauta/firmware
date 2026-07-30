@@ -92,6 +92,8 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <sys/select.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -305,11 +307,23 @@ static int automation_enabled(void) {
 		 !strncmp(value, "false", 5) || !strncmp(value, "no", 2));
 }
 
+/* Every socket gets a deadline, and this is not belt-and-braces: without one a
+ * poll made while majestic is restarting can be accepted and then never
+ * answered, and the read blocks for ever. The daemon stays alive - it is still
+ * there in pidof - and simply never does anything again, which is a far worse
+ * failure than dying would have been. Seen on hardware: day/night stopped
+ * working after a majestic restart and stayed stopped. */
+#define IO_TIMEOUT_S	3
+
 static int connect_local(int port) {
 	int fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd < 0) {
 		return -1;
 	}
+
+	struct timeval tv = { .tv_sec = IO_TIMEOUT_S };
+	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
 	struct sockaddr_in addr = {
 		.sin_family = AF_INET,
@@ -317,11 +331,34 @@ static int connect_local(int port) {
 		.sin_addr.s_addr = htonl(INADDR_LOOPBACK),
 	};
 
-	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr))) {
+	/* connect() has its own way of hanging - a listening socket whose backlog
+	 * is full leaves it waiting - so it is bounded separately. */
+	int flags = fcntl(fd, F_GETFL, 0);
+	fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) && errno != EINPROGRESS) {
 		close(fd);
 		return -1;
 	}
 
+	fd_set w;
+	FD_ZERO(&w);
+	FD_SET(fd, &w);
+	struct timeval ctv = { .tv_sec = IO_TIMEOUT_S };
+
+	if (select(fd + 1, NULL, &w, NULL, &ctv) != 1) {
+		close(fd);
+		return -1;
+	}
+
+	int err = 0;
+	socklen_t len = sizeof(err);
+	if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) || err) {
+		close(fd);
+		return -1;
+	}
+
+	fcntl(fd, F_SETFL, flags);
 	return fd;
 }
 
@@ -445,6 +482,7 @@ int main(void) {
 	int complained = 0;
 	int no_thresholds = 0;
 	int warned_monitor = 0;
+	int no_reading = 0;
 	int requested = -1;		/* the last state asked of majestic */
 	time_t hold_until = 0;		/* automation waits until this moment */
 	int pending = -1;		/* what the light has been saying */
@@ -463,6 +501,9 @@ int main(void) {
 		 * alongside it and the camera reboots. Say nothing and wait. */
 		if (night < 0) {
 			applied = -1;	/* re-apply once it comes back */
+			requested = -1;	/* and adopt whatever state it comes back in,
+					 * rather than reading a restart as somebody
+					 * pressing the button */
 			usleep(POLL_MS * 1000);
 			continue;
 		}
@@ -471,11 +512,26 @@ int main(void) {
 		struct night_config cfg;
 		read_config(&cfg);
 
-		/* Adopt whatever majestic is doing when we first see it, so that a
-		 * button pressed before any automatic switch still counts as a manual
-		 * one rather than passing unnoticed. */
+		/* Start from day, every time, and only then let the light argue.
+		 *
+		 * This is how the same thing works on cameras generally, and the reason
+		 * is that it gives a known baseline: after a start the mode is not
+		 * whatever happened to be left behind or reported, it is day, and any
+		 * move away from it is one this program made and can account for. If it
+		 * really is dark the light says so continuously and the mode changes as
+		 * soon as the hysteresis is satisfied, which costs one monitorDelay and
+		 * removes the ambiguity for good.
+		 *
+		 * Only when automation is running. With it switched off the state is
+		 * somebody else's to choose and is left exactly as found. */
 		if (requested < 0) {
+			if (automate && night) {
+				request_night(0);
+				night = 0;
+			}
+
 			requested = night;
+			syslog(LOG_INFO, "starting in %s", night ? "night" : "day");
 		}
 
 		/* Somebody moved it, and it was not us - the Preview page's button, or
@@ -555,6 +611,28 @@ int main(void) {
 				int delay = cfg.monitor_delay >= 0 ?
 					cfg.monitor_delay : DEFAULT_DELAY;
 				time_t now = time(NULL);
+
+				/* No reading, no decision - but say so, once. This was silent
+				 * before, and a silent do-nothing is indistinguishable from a
+				 * camera that has simply decided it is still daytime. The
+				 * usual cause is the source not being there: /proc/jz/isp
+				 * appears with the ISP, so a stream that is not running has no
+				 * AeAGain to read. */
+				if (gain < 0) {
+					if (!no_reading) {
+						syslog(LOG_WARNING,
+							"no light reading from the '%s' source, so "
+							"nothing will switch%s", source,
+							cfg.adc_readout ? " - is the photoresistor "
+							"fitted, and isp.adcReadout right for this "
+							"camera?" : " - is the stream running?");
+						no_reading = 1;
+					}
+				} else if (no_reading) {
+					syslog(LOG_INFO, "light reading from '%s' is back: %d",
+						source, gain);
+					no_reading = 0;
+				}
 
 				if (gain >= 0 && now >= hold_until) {
 					int want = night;
