@@ -140,6 +140,12 @@ isp() {
 ADC=/dev/ingenic_adc_aux_0
 ISP_PROC=/proc/jz/isp
 SAMPLES=9
+SAMPLE_GAP=200000		# 0.2 s, so the samples span about 1.6 s
+
+# Where the switching state lives. Deliberately on tmpfs: it is rewritten on
+# every tick, and putting a once-a-minute write on a NOR flash would wear it out
+# for nothing. Losing it across a reboot costs one extra confirmation period.
+STATE=/tmp/daynight.state
 
 adc_sample() {
 	[ -r "$ADC" ] || return 1
@@ -162,6 +168,12 @@ darkness_source() {
 
 # The median of several samples rather than one, and a median rather than a mean:
 # both readings wander, and one outlier must not be able to pulse the solenoid.
+#
+# The samples are SPACED IN TIME, which is the whole point of taking several. Read
+# back to back they arrive inside a millisecond or two; the ADC would at least
+# still give a fresh conversion each time, but the gain is one number in a proc
+# file that the ISP updates per frame, so nine immediate reads return the same
+# value nine times and the median smooths nothing at all.
 darkness() {
 	src=$(darkness_source)
 	i=0
@@ -173,7 +185,83 @@ darkness() {
 		esac
 		echo
 		i=$((i + 1))
+		[ $i -lt $SAMPLES ] && usleep $SAMPLE_GAP
 	done | grep -E '^[0-9]+$' | sort -n | sed -n "$(( (SAMPLES + 1) / 2 ))p"
+}
+
+# Decide from how dark it is. Two thresholds with a dead band between them, so a
+# value sitting near the boundary cannot throw the filter back and forth - each
+# crossing costs a solenoid pulse and a visible jump in the picture.
+#
+# The thresholds are MANDATORY, with no defaults, and that is a safety property
+# rather than an omission. Their right values depend on the source, the lens, the
+# housing and where the camera points; and a camera whose photoresistor is not
+# fitted reads a steady near-zero - measured on one here, 4 to 35 units, which is
+# 1 to 8 raw counts of 4096 and does not move when the room lights go out. Any
+# built-in number would read that as broad daylight or pitch darkness depending on
+# its sense, and act on it. A first attempt with invented defaults did exactly
+# that and drove the camera to night at noon.
+# State, kept as three whitespace-separated fields: when the last switch happened,
+# which way the readings are currently leaning, and for how many ticks running.
+# "-" rather than an empty field for "leaning nowhere". An empty middle field
+# would vanish in the word splitting on the way back in, shifting the count into
+# the candidate - which read back as a lean towards a mode named "0".
+state_read() {
+	set -- $(cat "$STATE" 2>/dev/null)
+	LAST_SWITCH=${1:-0}
+	CANDIDATE=${2:--}
+	CONFIRMED=${3:-0}
+	[ "$CANDIDATE" = - ] && CANDIDATE=
+	return 0
+}
+
+state_write() {
+	echo "$LAST_SWITCH ${CANDIDATE:--} $CONFIRMED" >"$STATE" 2>/dev/null
+}
+
+# Two delays stand between a reading and the filter actually moving, and both
+# exist because of a real oscillation seen on hardware: the picture hunted
+# between colour and greyscale every time the light changed.
+#
+# THE CAUSE IS FEEDBACK, and it is specific to the gain source. AeAGain is the
+# ISP's OWN exposure gain, so switching the ISP to night tuning changes the very
+# number the decision was made from - and on a camera with the IR-cut fitted,
+# moving the filter out of the light path changes how much light reaches the
+# sensor outright, which moves the gain further still. A dead band between the
+# two thresholds cannot help: the value does not creep across the boundary, it
+# jumps clean over it. A photoresistor does not have this problem because it
+# measures the room, not the pipeline.
+#
+#   dn_settle   seconds after a switch during which readings are ignored. The
+#               pipeline is still re-converging and nothing it reports means
+#               anything yet.
+#   dn_confirm  how many consecutive ticks must agree before switching. Kills
+#               both the tail of the feedback transient and real but brief
+#               changes - headlights, a light switched on next door.
+#
+# Unlike the thresholds these DO have defaults, and the difference is not
+# arbitrary: a wrong threshold makes the camera act on nonsense, while a wrong
+# settle or confirm can only ever make it slower to switch. A default that can
+# only be too cautious is safe to ship; one that can be confidently wrong is not.
+settle_seconds() {
+	v=$(env_get dn_settle)
+	echo "${v:-180}"
+}
+
+confirm_ticks() {
+	v=$(env_get dn_confirm)
+	echo "${v:-3}"
+}
+
+switch_to() {
+	MODE=$1
+	ircut
+	illuminator
+	isp
+	LAST_SWITCH=$(date +%s)
+	CANDIDATE=
+	CONFIRMED=0
+	state_write
 }
 
 # Decide from how dark it is. Two thresholds with a dead band between them, so a
@@ -205,7 +293,9 @@ auto() {
        no defaults - see the comment above this function."
 	fi
 
+	state_read
 	now=$(current_mode)
+
 	if [ "$value" -gt "$night_above" ]; then
 		want=night
 	elif [ "$value" -lt "$day_below" ]; then
@@ -214,11 +304,40 @@ auto() {
 		want=$now		# in the dead band: leave it where it is
 	fi
 
-	[ "$want" = "$now" ] && return 0
-	MODE=$want
-	ircut
-	illuminator
-	isp
+	# Already there: forget any lean that had started to build up, so a brief
+	# excursion does not leave a half-finished count behind to be completed by
+	# an unrelated one an hour later.
+	if [ "$want" = "$now" ]; then
+		if [ -n "$CANDIDATE" ]; then
+			CANDIDATE=
+			CONFIRMED=0
+			state_write
+		fi
+		return 0
+	fi
+
+	settle=$(settle_seconds)
+	elapsed=$(( $(date +%s) - LAST_SWITCH ))
+	if [ "$LAST_SWITCH" -gt 0 ] && [ "$elapsed" -lt "$settle" ]; then
+		[ -n "$VERBOSE" ] && echo "daynight: settling, ${elapsed}s of ${settle}s"
+		return 0
+	fi
+
+	if [ "$CANDIDATE" = "$want" ]; then
+		CONFIRMED=$((CONFIRMED + 1))
+	else
+		CANDIDATE=$want
+		CONFIRMED=1
+	fi
+
+	confirm=$(confirm_ticks)
+	if [ "$CONFIRMED" -lt "$confirm" ]; then
+		state_write
+		[ -n "$VERBOSE" ] && echo "daynight: darkness $value leans $want ($CONFIRMED/$confirm)"
+		return 0
+	fi
+
+	switch_to "$want"
 	echo "daynight: darkness $value -> $want"
 }
 
@@ -238,18 +357,33 @@ status() {
 	fi
 	printf 'source    : %s\n' "$(darkness_source)"
 	printf 'darkness  : %s\n' "$(darkness || echo unavailable)"
+	printf 'night above: %s\n' "$(env_get dn_night_above || echo UNSET)"
+	printf 'day below : %s\n' "$(env_get dn_day_below || echo UNSET)"
+	printf 'settle    : %ss\n' "$(settle_seconds)"
+	printf 'confirm   : %s ticks\n' "$(confirm_ticks)"
+	state_read
+	if [ "$LAST_SWITCH" -gt 0 ]; then
+		printf 'last switch: %ss ago\n' "$(( $(date +%s) - LAST_SWITCH ))"
+	else
+		printf 'last switch: never since boot\n'
+	fi
+	[ -n "$CANDIDATE" ] && printf 'leaning   : %s (%s ticks)\n' "$CANDIDATE" "$CONFIRMED"
 	printf 'ircut pins: %s\n' "$(env_get gpio_ircut || echo unset)"
 	printf 'ir850 pin : %s\n' "$(env_get gpio_ir850 || echo unset)"
 }
 
 case "$1" in
 day|night)
-	MODE=$1
-	ircut
-	illuminator
-	isp
+	# Through switch_to, not straight at the hardware: it records the time, so
+	# a switch made by hand gets the same settle window as any other and the
+	# next tick does not immediately argue with it.
+	state_read
+	switch_to "$1"
 	;;
 auto)
+	# Run by a person, so say what is being waited for - a silent "nothing
+	# happened" is the wrong answer to someone debugging why it did not switch.
+	VERBOSE=1
 	auto
 	;;
 cron)
