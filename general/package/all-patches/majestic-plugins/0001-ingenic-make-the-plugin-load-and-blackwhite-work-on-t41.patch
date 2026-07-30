@@ -1,6 +1,6 @@
 ingenic: make the plugin load, and the ISP knobs work, on T41
 
-Three problems, all fatal on T41 and none visible on t31.
+Four problems, all on T41 and none visible on t31.
 
 The plugin did not load at all. T41's libimp exports no GetContrast, no
 GetSensorFPS and neither flip call, and musl resolves a shared object's
@@ -16,29 +16,28 @@ repair it. The ISP driver carries the same day/night switch as a module
 parameter, so use that where it exists and fall through to the library
 call where it does not - which is every other SoC, so nothing there
 changes. The same applies to brightness and contrast, which is why the
-lookup is written once and shared. The module directory is found rather
-than assumed, because the driver is named after its SoC.
+lookup is written once and shared, and the module directory is found
+rather than assumed because the driver is named after its SoC.
 
 This matters beyond the plugin: majestic has no ingenic implementation of
 the grey conversion - it logs "Not implemented for platform ingenic" - so
 on these parts this command is the only thing that makes the picture
 actually turn grey.
 
-And the plugin covered only two of the four image knobs the streamer
-offers. saturation, sharpness and hue are added, so every one of them can
-be set while watching the result rather than by saving and looking. They
-take the same route: the driver parameter first, the library call after.
-Hue has no library call to fall back to on T41 - libimp exports none at
-all - so there the parameter is the only route.
+Only two of the streamer's four image knobs were covered. saturation,
+sharpness and hue are added by the same route, so a live preview has no
+sliders that silently do nothing. Hue has no library call to fall back to
+on T41, where libimp exports none, so there the parameter is the only way.
 
-Rotation is deliberately left unsupported rather than routed through the
-sensor's shvflip parameter: the driver re-applies that when the stream
-starts, not when the parameter is written, so setting it here would look
-like it worked and change nothing until the next restart.
+And rotation reported itself unsupported. On T41 orientation belongs to
+the sensor, whose driver carries it as a module parameter and now applies
+it on write, so it can be set on a running stream. The sensor module is
+named after the sensor and the SoC, so it too is found rather than
+assumed, and the library calls remain the fallback everywhere else.
 
 --- a/ingenic/custom.c
 +++ b/ingenic/custom.c
-@@ -3,8 +3,112 @@
+@@ -3,8 +3,121 @@
  #include <sysutils/su_base.h>
  #include <plugin.h>
  
@@ -73,16 +72,20 @@ like it worked and change nothing until the next restart.
 + * SoC (tx-isp-t41 and so on), so the module directory is found rather than
 + * assumed, and a SoC whose driver has no such parameter falls through to the
 + * library exactly as before. */
-+static int isp_param_path(const char *name, char *out, size_t len) {
++static int module_param_path(const char *prefix, const char *name,
++			     char *out, size_t len) {
 +	DIR *d = opendir("/sys/module");
 +	if (!d) {
 +		return 0;
 +	}
 +
++	size_t plen = strlen(prefix);
 +	struct dirent *e;
 +	int found = 0;
 +	while (!found && (e = readdir(d))) {
-+		if (strncmp(e->d_name, "tx_isp", 6) && strncmp(e->d_name, "tx-isp", 6)) {
++		/* Both spellings: module names use underscores, but the source they
++		 * are built from is often hyphenated and either can turn up. */
++		if (strncmp(e->d_name, prefix, plen)) {
 +			continue;
 +		}
 +
@@ -92,6 +95,11 @@ like it worked and change nothing until the next restart.
 +
 +	closedir(d);
 +	return found;
++}
++
++static int isp_param_path(const char *name, char *out, size_t len) {
++	return module_param_path("tx_isp", name, out, len) ||
++	       module_param_path("tx-isp", name, out, len);
 +}
 +
 +static int isp_param_write(const char *name, int value) {
@@ -151,7 +159,7 @@ like it worked and change nothing until the next restart.
  	if (IMP_ISP_Tuning_SetISPRunningMode(index)) {
  		RETURN("IMP_ISP_Tuning_SetISPRunningMode failed");
  	}
-@@ -15,13 +119,30 @@
+@@ -15,13 +128,30 @@
  static void set_brightness(const char *value) {
  	if (strlen(value)) {
  		unsigned char index = atoi(value);
@@ -182,7 +190,7 @@ like it worked and change nothing until the next restart.
  		if (IMP_ISP_Tuning_GetBrightness(&current)) {
  			RETURN("IMP_ISP_Tuning_GetBrightness failed");
  		}
-@@ -33,13 +154,30 @@
+@@ -33,13 +163,30 @@
  static void set_contrast(const char *value) {
  	if (strlen(value)) {
  		unsigned char index = atoi(value);
@@ -213,7 +221,7 @@ like it worked and change nothing until the next restart.
  		if (IMP_ISP_Tuning_GetContrast(&current)) {
  			RETURN("IMP_ISP_Tuning_GetContrast failed");
  		}
-@@ -48,9 +186,104 @@
+@@ -48,9 +195,122 @@
  	}
  }
  
@@ -307,10 +315,28 @@ like it worked and change nothing until the next restart.
  static void set_rotation(const char *value) {
  	int index = strlen(value) ? atoi(value) : -1;
  
-+	/* Not routed through the driver on T41. The sensor carries the flip as a
-+	 * module parameter, but it is applied when the stream starts rather than
-+	 * when the parameter is written, so setting it here would appear to work
-+	 * and change nothing until the next restart. Better to say so. */
++	if (index < 0 || index > 3) {
++		RETURN("Unknown rotation: %d", index);
++	}
++
++	/* On T41 orientation belongs to the sensor: libimp exports no ISP flip
++	 * call at all. The sensor driver carries it as a module parameter and
++	 * applies it on write, so it takes effect on the running stream. The
++	 * module is named after the sensor and the SoC, so it is found rather
++	 * than assumed. */
++	char path[160];
++	if (module_param_path("sensor_", "shvflip", path, sizeof(path)) ||
++	    module_param_path("sensor-", "shvflip", path, sizeof(path))) {
++		FILE *f = fopen(path, "w");
++		if (f) {
++			int ok = fprintf(f, "%d", index) > 0;
++			fclose(f);
++			if (ok) {
++				RETURN("Set rotation: %d", index);
++			}
++		}
++	}
++
 +	if (!IMP_ISP_Tuning_SetISPHflip || !IMP_ISP_Tuning_SetISPVflip) {
 +		RETURN("Rotation unsupported on this SoC");
 +	}
@@ -318,7 +344,7 @@ like it worked and change nothing until the next restart.
  	switch (index) {
  		case 0:
  			IMP_ISP_Tuning_SetISPHflip(0);
-@@ -90,6 +323,10 @@
+@@ -90,6 +350,10 @@
  		RETURN("Set fps: %d", index);
  	} else {
  		uint32_t current;
@@ -329,7 +355,7 @@ like it worked and change nothing until the next restart.
  		if (IMP_ISP_Tuning_GetSensorFPS(&current, &fps_den)) {
  			RETURN("IMP_ISP_Tuning_GetSensorFPS failed");
  		}
-@@ -129,6 +366,9 @@
+@@ -129,6 +393,9 @@
  	{ "blackwhite", &set_blackwhite },
  	{ "brightness", &set_brightness },
  	{ "contrast", &set_contrast },
