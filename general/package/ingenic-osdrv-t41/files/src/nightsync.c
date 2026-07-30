@@ -85,6 +85,57 @@
  *                                                              |
  *                                        ingenic.so blackwhite --> ISP driver
  *
+ * CONFIGURATION - everything this reads, in one place.
+ *
+ * All of it belongs to majestic and is edited in its web UI, with one
+ * exception noted at the end.
+ *
+ *   nightMode.minThreshold   back to day below this
+ *   nightMode.maxThreshold   to night above this
+ *                            Setting BOTH is what enables automatic switching.
+ *                            Compared against the light level, which reads
+ *                            higher as it gets darker. There are no defaults:
+ *                            an invented one is how a camera decides it is
+ *                            night at noon.
+ *   nightMode.monitorDelay   how long the light must STAY past a threshold
+ *                            before it is believed. Not a cooldown - that
+ *                            would let a torch swept across the lens switch
+ *                            the mode and only then wait.
+ *   nightMode.colorToGray    whether night mode desaturates at all. Off means
+ *                            IR-cut and lamp without losing colour.
+ *   nightMode.lightMonitor   MUST STAY OFF on this SoC. It starts majestic's
+ *                            own monitor, which compares an isp_again it never
+ *                            fills - always -1, below any minThreshold - so it
+ *                            settles on day and holds it. With it on, this
+ *                            program stands down entirely and says so once.
+ *   nightMode.lightSensorPin a digital light sensor on a GPIO. Where one is
+ *                            configured, majestic's hardware monitor owns the
+ *                            decision and this program stays out of it.
+ *   isp.adcReadout           says the camera has a photoresistor on SADC AUX0
+ *                            worth reading, and selects it as the light source
+ *                            in place of the ISP's gain.
+ *
+ * And the one setting that is not majestic's, because majestic has no key for
+ * it and an invented one would not survive - majestic rewrites its own file
+ * when settings are saved and drops what it does not know:
+ *
+ *   nightsync_auto           in the U-Boot environment. The ONLY purpose is to
+ *                            switch automatic day/night OFF on a camera that
+ *                            should never change mode by itself:
+ *
+ *                                fw_setenv nightsync_auto off
+ *
+ *                            Absent means enabled, so a camera that has never
+ *                            heard of it behaves normally - it is an off
+ *                            switch and nothing else. "off", "0", "false" and
+ *                            "no" all disable. Read once at startup, so it
+ *                            takes a restart of this daemon to take effect,
+ *                            and the log says so when it is in force. The
+ *                            buttons keep working either way; only the
+ *                            automatic switching stops. The web UI's
+ *                            environment editor can set it, so it does not
+ *                            need a shell.
+ *
  * The plugin is preferred but not required, and that is deliberate. Since
  * 2025-11-21 majestic-plugins is under the Prosperity Public License 3.0.0,
  * which is free for noncommercial use only, so a camera must not need it

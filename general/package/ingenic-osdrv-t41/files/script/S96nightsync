@@ -3,6 +3,23 @@
 # Starts after majestic, because it has nothing to do until majestic is up.
 # It tolerates majestic being absent or slow either way - it simply waits - so
 # the ordering is a courtesy rather than a requirement.
+#
+# nightsync gives majestic's night mode the half of it that is missing on this
+# SoC - the grey conversion - and supplies the light reading and the decision,
+# which majestic cannot do here either. Every setting comes from majestic's own
+# configuration and is edited in its web UI; see the top of nightsync.c for the
+# full list. Two things are worth knowing without reading that:
+#
+#   nightMode.lightMonitor must stay OFF. Turning it on starts majestic's own
+#   light monitor, which cannot see anything on this SoC and holds day mode.
+#   Setting nightMode.minThreshold and nightMode.maxThreshold is what enables
+#   automatic switching here.
+#
+#   fw_setenv nightsync_auto off
+#
+#   turns automatic switching off altogether, for a camera that should never
+#   change mode by itself. The Preview page's buttons keep working. Absent
+#   means enabled; it exists only to disable. Takes effect on restart.
 
 DAEMON="nightsync"
 PIDFILE="/var/run/$DAEMON.pid"
