@@ -1,0 +1,49 @@
+sensors: t41: gc5603: move the output crop when the image is flipped
+
+Vertical flip left a band of optical black along one edge of the picture.
+
+The sensor reads a window of 1674 rows and the crop takes 1620 of them
+starting 4 rows in, so 54 rows are spare. Flipping reverses the readout,
+so those 4 rows are consumed at the far end instead, and rows meant to
+stay outside the picture come into it. The complement, 54 - 4 = 50, puts
+the crop back where it was relative to the sensor.
+
+Measured rather than assumed: 50 removes the band exactly, and the
+arithmetic predicted it, so this is not a fitted constant.
+
+Only the crop moves. The readout window start was the other candidate and
+turned out not to be involved, so it is left alone - moving it would have
+shifted the exposure geometry for nothing.
+
+The same reasoning predicts 88 - 4 = 84 for horizontal mirror, whose
+window is 2968 wide against a 2880 crop, but no band has been observed
+there and an unverified constant is worse than none, so that is left until
+somebody sees one.
+
+--- a/kernel/sensors/t41/gc5603/gc5603.c
++++ b/kernel/sensors/t41/gc5603/gc5603.c
+@@ -711,6 +711,24 @@
+ 	val = gc5603_read(sd, 0x022c, &val);
+ 	val1 = gc5603_read(sd, 0x0063, &val1);
+ 
++	/*
++	 * The output crop has to follow the flip, or a band of optical black
++	 * appears at the edge of the picture.
++	 *
++	 * The sensor reads a window of 1674 rows (0x034a/0x034b) and the crop
++	 * takes 1620 of them (0x0096/0x0097) starting 4 rows in (0x0099), so 54
++	 * rows are spare. Flipping reverses the readout, so those 4 rows are
++	 * consumed at the far end instead and rows meant to stay outside the
++	 * picture come into it. Taking the complement, 54 - 4 = 50, puts the crop
++	 * back where it was relative to the sensor.
++	 *
++	 * Measured on hardware: 50 removes the band exactly, first try.
++	 */
++	if (enable & 0x02)
++		gc5603_write(sd, 0x0099, 50);
++	else
++		gc5603_write(sd, 0x0099, 4);
++
+ 	/* 2'b01 mirror; 2'b10 flip; 2'b11 mirror &flip */
+ 	switch(enable){
+ 		case 0:
