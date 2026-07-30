@@ -68,10 +68,32 @@ define MAJESTIC_WEBUI_SETTINGS_PREVIEW
 		$(TARGET_DIR)/var/www/a/mj-settings.js
 endef
 
+# Live image tuning, where a plugin is installed to do it. The streamer applies
+# image settings on save, so choosing one means saving, looking and saving
+# again; the plugin can set the running ISP directly, so the picture can follow
+# the slider instead.
+#
+# The script tag goes into mj-settings.cgi, which is plain text, rather than
+# into mj-settings.js, which ships minified - a change there cannot be reviewed
+# in a diff. The script itself binds nothing at load time and listens for input
+# events on the document, so it needs to know nothing about when the settings
+# form is built or rebuilt. The result is checked, so a future dist that moves
+# the anchor fails the build here instead of silently shipping a dead file.
+define MAJESTIC_WEBUI_PLUGIN_LIVE
+	$(INSTALL) -m 755 -D $(MAJESTIC_WEBUI_PKGDIR)/files/plugin.cgi \
+		$(TARGET_DIR)/var/www/cgi-bin/j/plugin.cgi
+	$(INSTALL) -m 644 -D $(MAJESTIC_WEBUI_PKGDIR)/files/plugin-live.js \
+		$(TARGET_DIR)/var/www/a/plugin-live.js
+	$(SED) 's|<script src="/a/mj-settings.js" defer></script>|&\n<script src="/a/plugin-live.js" defer></script>|' \
+		$(TARGET_DIR)/var/www/cgi-bin/mj-settings.cgi
+	grep -q 'plugin-live.js' $(TARGET_DIR)/var/www/cgi-bin/mj-settings.cgi
+endef
+
 define MAJESTIC_WEBUI_INSTALL_TARGET_CMDS
 	$(MAJESTIC_WEBUI_INSTALL)
 	$(MAJESTIC_WEBUI_$(VERSION)_FIXUP)
 	$(MAJESTIC_WEBUI_SETTINGS_PREVIEW)
+	$(if $(BR2_PACKAGE_MAJESTIC_PLUGINS),$(MAJESTIC_WEBUI_PLUGIN_LIVE))
 endef
 
 $(eval $(generic-package))
