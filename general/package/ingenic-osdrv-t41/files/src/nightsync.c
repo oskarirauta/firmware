@@ -172,6 +172,7 @@
 #define ISP_PROC	"/proc/jz/isp"
 #define DEFAULT_DELAY	10	/* seconds, only when monitorDelay is unset */
 #define MANUAL_HOLD	90	/* seconds a switch made by hand is left alone */
+#define PLACE_MS	400	/* how long the filter is left in night while placing it */
 
 /* A second is the compromise. The Preview button has to feel immediate - the
  * whole reason for this is that reaching for a shell instead is impractical,
@@ -193,6 +194,7 @@ struct night_config {
 	int have_sensor_pin;
 	int adc_readout;	/* isp.adcReadout: this camera has a photoresistor */
 	int color_to_gray;	/* nightMode.colorToGray: grey the picture at night */
+	int have_ircut;		/* nightMode.irCutPin1: a filter is configured */
 	int min_threshold;	/* back to day below this */
 	int max_threshold;	/* to night above this */
 	int monitor_delay;	/* seconds; -1 if unset */
@@ -249,7 +251,9 @@ static void read_config(struct night_config *c) {
 			continue;
 		}
 
-		if (!strcmp(key, "colorToGray")) {
+		if (!strcmp(key, "irCutPin1")) {
+			c->have_ircut = 1;
+		} else if (!strcmp(key, "colorToGray")) {
 			c->color_to_gray = yaml_bool(val);
 		} else if (!strcmp(key, "lightMonitor")) {
 			c->light_monitor = yaml_bool(val);
@@ -597,7 +601,39 @@ int main(void) {
 		 * Only when automation is running. With it switched off the state is
 		 * somebody else's to choose and is left exactly as found. */
 		if (requested < 0) {
-			if (automate && night) {
+			/*
+			 * Put the IR-cut filter somewhere known, by driving a full
+			 * transition rather than trusting the reported state.
+			 *
+			 * The filter is a latching solenoid: it stays wherever it was
+			 * last pushed, including across a reflash, and nothing can
+			 * read its position back. majestic only moves it when the mode
+			 * *changes*, and at startup it believes it is already in day -
+			 * so it drives nothing, and a camera whose previous firmware
+			 * left the filter in the night position shows a red picture
+			 * indefinitely with no indication why. The vendor firmware and
+			 * thingino both place it at boot; the audible click at startup
+			 * is exactly that, and its absence was the symptom.
+			 *
+			 * Requesting night and then day makes majestic perform a real
+			 * transition, so the solenoid ends up in the day position
+			 * whatever it believed. The cost is one extra pulse per boot
+			 * and a brief red flash, against a picture that is otherwise
+			 * permanently wrong.
+			 *
+			 * Only where a filter is actually configured - with no
+			 * irCutPin1 there is nothing to place, and the flip would be
+			 * pure noise. Done regardless of whether automation is on: this
+			 * corrects the hardware to match what the software already
+			 * believes, which is not the same as overriding a choice.
+			 */
+			if (cfg.have_ircut) {
+				syslog(LOG_INFO, "placing the IR-cut filter in day");
+				request_night(1);
+				usleep(PLACE_MS * 1000);
+				request_night(0);
+				night = 0;
+			} else if (automate && night) {
 				request_night(0);
 				night = 0;
 			}
