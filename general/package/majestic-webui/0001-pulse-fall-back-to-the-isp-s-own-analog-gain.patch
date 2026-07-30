@@ -25,9 +25,34 @@ pays for the read.
 
 Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
 
+A failed conversion also has to be filtered here. The driver lets one out
+as 1047938 - a raw -145 wrapped through the unsigned scaling - mostly in
+darkness, where the photoresistor's impedance is highest and the
+conversion settles slowest. Showing that would be worse than showing
+nothing, because it is precisely the number somebody would then choose
+their thresholds against. Blanked, so the poll falls back to -1 and the
+page hides the reading for that second.
+
+Two further things the sensor forces.
+
+A failed conversion escapes the driver as an enormous positive number -
+1047938, a raw -145 carried through the unsigned scaling - and it is not
+rare: seen for two seconds at a time and once for over a minute, at any
+light level. It has nothing to do with the light: the reading jumps
+straight there from mid-range and back, never climbing, so it is a failed
+conversion rather than the scale overflowing. Answering it correctly means
+replying with the previous good reading, which needs memory that a CGI
+invoked afresh for every poll does not have.
+
+So prefer the value nightsync publishes, which is already filtered that
+way, and fall back to reading the sensor here when it is absent or stale -
+a stopped daemon should not freeze the display on its last word. The
+figure shown is then the same one the thresholds are actually compared
+against, rather than a second opinion formed differently.
+
 --- a/www/cgi-bin/j/pulse.cgi
 +++ b/www/cgi-bin/j/pulse.cgi
-@@ -6,6 +6,35 @@
+@@ -6,6 +6,79 @@
  	daynight_value=$(wget -q -T1 localhost/metrics/isp?value=isp_again -O -)
  fi
  
@@ -46,6 +71,31 @@ Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
 +# reader. Consulted only when the streamer has nothing to say, and the whole
 +# block is guarded on the proc entry existing, so no other platform changes
 +# behaviour or pays for the extra read.
++# nightsync publishes the light level it is actually deciding on, already
++# filtered. Prefer it: the sensor can return a failed conversion as an enormous
++# number, and answering that correctly means replying with the previous good
++# reading - which needs memory this page does not have, being invoked afresh for
++# every poll. It also means the figure shown is the same one the thresholds are
++# compared against, rather than a second opinion.
++#
++# The published line is "<epoch> <value>". Anything older than a few polls is
++# treated as absent, so a stopped daemon falls through to reading the sensor
++# here instead of freezing the display on its last word.
++if [ -z "$daynight_value" ] || [ "$daynight_value" = "-1" ]; then
++	if [ -r /tmp/nightsync.light ]; then
++		read -r light_stamp light_value < /tmp/nightsync.light
++		case "${light_stamp}:${light_value}" in
++			''|*[!0-9:]*)
++				;;
++			*)
++				if [ $(( $(date +%s) - light_stamp )) -lt 10 ]; then
++					daynight_value=$light_value
++				fi
++				;;
++		esac
++	fi
++fi
++
 +if [ -z "$daynight_value" ] || [ "$daynight_value" = "-1" ]; then
 +	if [ -d /proc/jz/isp ]; then
 +		if [ "$(cli -g .isp.adcReadout 2>/dev/null)" = "true" ] &&
@@ -54,6 +104,25 @@ Signed-off-by: Oskari Rauta <oskari.rauta@gmail.com>
 +			# The device name is the one load_ingenic points at whichever
 +			# AUX channel this board's sensor is on.
 +			daynight_value=$(od -An -tu4 -N4 /dev/jz_adc_aux_0 2>/dev/null | tr -d ' \n')
++
++			# A failed conversion escapes the driver as an enormous
++			# positive number rather than as an error - 1047938, which
++			# is a raw -145 wrapped through the unsigned scaling. It
++			# turns up mostly in darkness, where the photoresistor's
++			# impedance is highest and the conversion settles slowest.
++			# Showing it would be worse than showing nothing: it is the
++			# number somebody would then set their thresholds against.
++			# Blank it and let this poll fall back to -1, which the page
++			# already knows to hide; the next poll a second later has a
++			# good value.
++			case "$daynight_value" in
++				''|*[!0-9]*)
++					daynight_value=""
++					;;
++				*)
++					[ "$daynight_value" -gt 100000 ] && daynight_value=""
++					;;
++			esac
 +		else
 +			daynight_value=$(awk '/^AeAGain /{print $3; exit}' /proc/jz/isp/* 2>/dev/null)
 +		fi

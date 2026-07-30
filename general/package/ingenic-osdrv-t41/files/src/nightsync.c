@@ -171,6 +171,22 @@
 #define CONFIG		"/etc/majestic.yaml"
 #define ISP_PROC	"/proc/jz/isp"
 #define ADC_MAX_PLAUSIBLE 100000	/* beyond any real reading, below a wrapped one */
+
+/*
+ * Where the current light level is published for anything else that wants it -
+ * the status page in particular.
+ *
+ * The reading needs filtering that only something with memory can do: a failed
+ * conversion has to be answered with the previous good value, and a CGI invoked
+ * afresh for every poll has no previous value to answer with. Rather than have
+ * the page read the sensor itself and get the raw fault, it reads what this
+ * program already worked out.
+ *
+ * The line is "<epoch> <value>", so a reader can tell a live figure from one
+ * left behind by a daemon that has since been stopped. On tmpfs, so a value
+ * rewritten every second costs no flash.
+ */
+#define LIGHT_PUBLISH	"/tmp/nightsync.light"
 #define DEFAULT_DELAY	10	/* seconds, only when monitorDelay is unset */
 #define MANUAL_HOLD	90	/* seconds a switch made by hand is left alone */
 #define PLACE_MS	400	/* how long the filter is left in night while placing it */
@@ -303,41 +319,42 @@ static int read_adc(void) {
 		}
 
 		/*
-		 * Discard a reading the hardware cannot have produced.
+		 * A failed conversion means "no measurement", so keep the last real
+		 * one rather than inventing a level.
 		 *
-		 * The driver returns raw * VREF*10 / AUXCONST, which for a 12-bit
-		 * conversion tops out just under 18000, and observed readings span
-		 * 0 to about 16000. Occasionally it returns 1047938 instead - always
-		 * that exact value, and more often in darkness than in bright light,
-		 * which points at a conversion read before it has settled: the
-		 * photoresistor's impedance is highest in the dark, so it settles
-		 * slowest there. That number is a raw -145 carried through the
-		 * unsigned multiply and wrapped:
-		 * (2^32 - 145) * 18000 / 4096 truncates to exactly 1047938. So it is
-		 * a failed conversion escaping as an enormous positive number rather
-		 * than an error. It became visible once three readers began polling
-		 * the device at once - majestic's adcReadout, this, and a shell.
+		 * The driver returns raw * VREF*10 / AUXCONST. A lit room reads
+		 * around 14450, a hand over the sensor about 16000, a lamp shone at
+		 * it 0. Every so often it returns 1047938 instead - always that
+		 * exact value, which is a raw -145 carried through the unsigned
+		 * multiply, since (2^32 - 145) * 18000 / 4096 truncates to it.
 		 *
-		 * The real fix belongs in the driver, which should not let a failed
-		 * conversion out as a value at all. This is the guard that can be
-		 * made from here.
+		 * It is a failed conversion and nothing to do with the light. The
+		 * reading **jumps** straight there from mid-range and back; it never
+		 * climbs, so it is not the scale overflowing. It happens at any
+		 * light level, and lasts from a couple of seconds to over a minute.
 		 *
-		 * Left alone it is worse than a wrong reading. Higher means darker
-		 * here, so it reads as pitch dark; and because a spike resets the
-		 * persistence clock every time it lands, it does not cause a wrong
-		 * switch so much as prevent a right one - automation stalls with
-		 * nothing in the log to say why.
+		 * Two treatments suggest themselves and measurement ruled out both.
+		 * Discarding it blinds the decision - shut in a drawer nothing else
+		 * came back for over a minute, so automation would sit still exactly
+		 * when it must choose night. Clamping it to the dark end is worse:
+		 * it lasts as long in bright light, far longer than any monitorDelay,
+		 * so the camera would go to night in daylight.
 		 *
-		 * The ceiling is deliberately generous rather than exact: it has to
-		 * stay clear of a legitimate value even when the driver's invert
-		 * parameter is in use, while a wrapped one is two orders of magnitude
-		 * above anything real.
+		 * Holding the previous value gets both right with no special case,
+		 * and note what is held: the fault is never stored, only readings
+		 * that passed the check, so the held figure is always a real
+		 * measurement. What it can be is stale - if the light changes during
+		 * a fault, the old value stands until the sensor answers again. That
+		 * is a corner case and the honest cost of filtering with memory.
 		 */
+		static int last_good = -1;
+
 		if (value > ADC_MAX_PLAUSIBLE) {
-			return -1;
+			return last_good;
 		}
 
-		return (int)value;
+		last_good = (int)value;
+		return last_good;
 	}
 
 	return -1;
@@ -420,6 +437,22 @@ static int automation_enabled(void) {
  * failure than dying would have been. Seen on hardware: day/night stopped
  * working after a majestic restart and stayed stopped. */
 #define IO_TIMEOUT_S	3
+
+static void publish_light(int value)
+{
+	char tmp[sizeof(LIGHT_PUBLISH) + 8];
+	snprintf(tmp, sizeof(tmp), "%s.new", LIGHT_PUBLISH);
+
+	FILE *f = fopen(tmp, "w");
+	if (!f) {
+		return;
+	}
+
+	/* Written aside and renamed, so a reader never sees half a line. */
+	fprintf(f, "%ld %d\n", (long)time(NULL), value);
+	fclose(f);
+	rename(tmp, LIGHT_PUBLISH);
+}
 
 static int connect_local(int port) {
 	int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -724,6 +757,15 @@ int main(void) {
 		}
 
 		if (automate && !cfg.light_monitor && !cfg.have_sensor_pin) {
+			/* Read and publish before deciding anything, so the value is
+			 * available while thresholds are still being chosen - which is
+			 * exactly when somebody is watching it. */
+			int light = cfg.adc_readout ? read_adc() : read_gain();
+
+			if (light >= 0) {
+				publish_light(light);
+			}
+
 			if (cfg.min_threshold < 0 || cfg.max_threshold < 0) {
 				if (!no_thresholds) {
 					syslog(LOG_WARNING,
@@ -744,7 +786,7 @@ int main(void) {
 				 * photoresistor still opens and still returns a number -
 				 * a steady near-zero, measured at 4 to 35 units on one
 				 * here - which would read as broad daylight forever. */
-				int gain = cfg.adc_readout ? read_adc() : read_gain();
+				int gain = light;
 				const char *source = cfg.adc_readout ? "adc" : "gain";
 				/* monitorDelay is how long the light has to STAY past a
 				 * threshold before it is believed - not how long to wait after

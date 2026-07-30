@@ -1,0 +1,99 @@
+mfd: ingenic_adc_aux: serialise conversions and stop errors escaping as values
+
+The aux ADC returns a nonsense reading - always exactly 1047938 on T41 -
+for seconds at a time, and once for over a minute. It is unrelated to what
+the sensor sees: the value jumps straight there from mid-range and back
+without ever climbing, and it happens as often in darkness as in daylight.
+
+Two defects, and they compound.
+
+There is no serialisation. One conversion and one completion are shared by
+every aux channel, but nothing guards them, so two readers overlapping
+means one waits for a completion the other has already consumed and times
+out. That became visible when a third reader appeared: a streamer polling
+the channel for a metric, a daemon polling it to decide day from night,
+and a shell watching it.
+
+And the error checks are dead code. Both sadc_volt here and sadc_val in
+the read handler were declared unsigned, so "x < 0" is a constant false
+that the compiler removes - a timed-out conversion was scaled and handed
+to userspace as an enormous positive number rather than failing. tmp was
+unsigned for the same reason: an interrupted wait returns a negative,
+which read as unsigned satisfies "tmp > 0" and sends the code on to read
+the data register as though the conversion had completed.
+
+Take a mutex around the conversion, and make the three variables signed so
+the checks that were already written actually run.
+
+--- a/drivers/mfd/ingenic_adc_aux.c
++++ b/drivers/mfd/ingenic_adc_aux.c
+@@ -16,6 +16,7 @@
+ #include <linux/interrupt.h>
+ #include <linux/kernel.h>
+ #include <linux/module.h>
++#include <linux/mutex.h>
+ #include <linux/platform_device.h>
+ #include <linux/slab.h>
+ #include <linux/io.h>
+@@ -111,16 +112,36 @@
+ 	return 0;
+ }
+ 
++/*
++ * One conversion and one completion are shared by every aux channel, so two
++ * readers overlapping means one of them waits for a completion the other has
++ * already consumed, times out, and returns whatever the timeout path leaves
++ * behind. That is not hypothetical: with three readers on one channel - a
++ * streamer polling it, a daemon polling it, and a shell - the device returns a
++ * nonsense value for seconds at a time. Serialise them.
++ */
++static DEFINE_MUTEX(ingenic_adc_aux_lock);
++
+ int ingenic_adc_aux_sample_volt(enum aux_ch channels,struct ingenic_adc_aux *ingenic_adc_aux)
+ {
+-	unsigned long tmp;
+-	unsigned long int sadc_volt = 0;
++	/*
++	 * Both of these were unsigned, which quietly disabled every error check
++	 * below: "x < 0" on an unsigned type is a constant false and the compiler
++	 * drops the branch, so a timeout was scaled and returned as an enormous
++	 * positive number instead of failing. "tmp > 0" had the same problem - an
++	 * interrupted wait returns a negative, which read as unsigned looked like
++	 * a successful one and sent the code on to read the data register anyway.
++	 */
++	long tmp;
++	long sadc_volt = 0;
+ 
+ 	if (!ingenic_adc_aux) {
+ 		printk("ingenic_adc_aux is null ! return\n");
+ 		return -EINVAL;
+ 	}
+ 
++	mutex_lock(&ingenic_adc_aux_lock);
++
+ 	INIT_COMPLETION(ingenic_adc_aux->read_completion);
+ 
+ 	ingenic_adc_aux->cell->enable(ingenic_adc_aux->pdev);
+@@ -144,11 +165,13 @@
+ 		printk("ingenic_adc_aux read value error!!\n");
+ 		disable_irq(ingenic_adc_aux->irq);
+ 		ingenic_adc_aux->cell->disable(ingenic_adc_aux->pdev);
++		mutex_unlock(&ingenic_adc_aux_lock);
+ 		return -EIO;
+ 	}
+ 
+ 	disable_irq(ingenic_adc_aux->irq);
+ 	ingenic_adc_aux->cell->disable(ingenic_adc_aux->pdev);
++	mutex_unlock(&ingenic_adc_aux_lock);
+ 
+ 	sadc_volt = sadc_volt * VREF_ADC*10 / AUXCONST;
+ 	if (invert)
+@@ -172,7 +195,7 @@
+ 
+ ssize_t ingenic_adc_aux_read(struct file *filp, char *buf, size_t len, loff_t *off)
+ {
+-	unsigned long int sadc_val = 0;
++	long sadc_val = 0;	/* signed, so the check below is not dead code */
+ 	struct miscdevice *dev = filp->private_data;
+ 	struct ingenic_adc_aux *aux = container_of(dev, struct ingenic_adc_aux, mdev);
+ 
