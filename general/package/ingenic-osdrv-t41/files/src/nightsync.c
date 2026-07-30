@@ -48,9 +48,27 @@
  * the comparison never changes direction. A board wired the other way round is
  * normalised by the ADC driver's own invert parameter, not here.
  *
- * It stays out of the way whenever majestic can do the job: with lightMonitor
- * off nothing is automatic and the buttons are in charge, and with a
- * lightSensorPin configured majestic's own hardware monitor owns it.
+ * WHAT ENABLES IT IS THE THRESHOLDS, NOT lightMonitor - and that is not a
+ * stylistic choice, it is forced. Setting lightMonitor starts majestic's own
+ * software monitor, and on Ingenic that monitor is blind: isp_again is always
+ * -1, which is below any minThreshold, so it concludes the scene is bright and
+ * drives the camera back to day about a second after anything sets night. The
+ * result is a camera that flips between day and night every few seconds and
+ * pulses the IR-cut solenoid each time. So lightMonitor must stay off here, and
+ * a pair of thresholds is what says automatic switching is wanted.
+ *
+ * That leaves the Preview buttons enabled, which majestic disables whenever
+ * lightMonitor is set - so on this platform automatic and manual are both
+ * available at once, which they are not otherwise. A switch made by hand is
+ * noticed and left alone for MANUAL_HOLD, which is a separate and much longer
+ * period than monitorDelay on purpose: monitorDelay says how long a change in
+ * the light has to last before it is believed, while this says how long a
+ * person gets to look at something after asking to. Someone who presses the
+ * button wants to see the scene now, and having it undone a few seconds later
+ * would defeat the reason the button is there.
+ *
+ * It still stays out of the way where majestic can do the job: a configured
+ * lightSensorPin leaves majestic's own hardware monitor in charge.
  *
  * The grey conversion itself is not done here either. It goes through the
  * majestic plugin, which is where OpenIPC keeps per-SoC ISP knowledge, so there
@@ -90,6 +108,8 @@
 #define POLL_MS		1000
 #define CONFIG		"/etc/majestic.yaml"
 #define ISP_PROC	"/proc/jz/isp"
+#define DEFAULT_DELAY	10	/* seconds, only when monitorDelay is unset */
+#define MANUAL_HOLD	300	/* seconds a switch made by hand is left alone */
 
 /* A second is the compromise. The Preview button has to feel immediate - the
  * whole reason for this is that reaching for a shell instead is impractical,
@@ -110,6 +130,7 @@ struct night_config {
 	int light_monitor;
 	int have_sensor_pin;
 	int adc_readout;	/* isp.adcReadout: this camera has a photoresistor */
+	int color_to_gray;	/* nightMode.colorToGray: grey the picture at night */
 	int min_threshold;	/* back to day below this */
 	int max_threshold;	/* to night above this */
 	int monitor_delay;	/* seconds; -1 if unset */
@@ -122,6 +143,7 @@ static int yaml_bool(const char *v) {
 static void read_config(struct night_config *c) {
 	memset(c, 0, sizeof(*c));
 	c->min_threshold = c->max_threshold = c->monitor_delay = -1;
+	c->color_to_gray = 1;	/* majestic's own default */
 
 	FILE *f = fopen(CONFIG, "r");
 	if (!f) {
@@ -165,7 +187,9 @@ static void read_config(struct night_config *c) {
 			continue;
 		}
 
-		if (!strcmp(key, "lightMonitor")) {
+		if (!strcmp(key, "colorToGray")) {
+			c->color_to_gray = yaml_bool(val);
+		} else if (!strcmp(key, "lightMonitor")) {
 			c->light_monitor = yaml_bool(val);
 		} else if (!strcmp(key, "lightSensorPin")) {
 			c->have_sensor_pin = 1;
@@ -251,6 +275,34 @@ static int read_gain(void) {
 
 	closedir(d);
 	return gain;
+}
+
+/* An off switch, for a camera that should never change mode on its own. It
+ * lives in the U-Boot environment rather than majestic's configuration because
+ * majestic has no key for it - and inventing one there would not survive, since
+ * majestic rewrites that file whenever settings are saved and drops what it
+ * does not know. The environment is where this firmware already keeps per-unit
+ * settings, and the web UI can edit it, so it is still reachable without a
+ * shell. Read once: an enable flag is not something that changes while running,
+ * and paying a fork every second for it would be silly.
+ *
+ * Absent means enabled, so a camera that has never heard of this behaves as
+ * before. */
+static int automation_enabled(void) {
+	FILE *f = popen("fw_printenv -n nightsync_auto 2>/dev/null", "r");
+	if (!f) {
+		return 1;
+	}
+
+	char value[32] = "";
+	if (!fgets(value, sizeof(value), f)) {
+		value[0] = 0;
+	}
+
+	pclose(f);
+
+	return !(!strncmp(value, "off", 3) || !strncmp(value, "0", 1) ||
+		 !strncmp(value, "false", 5) || !strncmp(value, "no", 2));
 }
 
 static int connect_local(int port) {
@@ -392,7 +444,17 @@ int main(void) {
 	int applied = -1;		/* nothing applied yet */
 	int complained = 0;
 	int no_thresholds = 0;
-	time_t last_switch = 0;
+	int warned_monitor = 0;
+	int requested = -1;		/* the last state asked of majestic */
+	time_t hold_until = 0;		/* automation waits until this moment */
+	int pending = -1;		/* what the light has been saying */
+	time_t pending_since = 0;
+	int automate = automation_enabled();
+
+	if (!automate) {
+		syslog(LOG_INFO, "automatic switching is off (nightsync_auto), "
+			"the buttons still work");
+	}
 
 	for (;;) {
 		int night = read_night_state();
@@ -409,14 +471,49 @@ int main(void) {
 		struct night_config cfg;
 		read_config(&cfg);
 
-		if (cfg.light_monitor && !cfg.have_sensor_pin) {
+		/* Adopt whatever majestic is doing when we first see it, so that a
+		 * button pressed before any automatic switch still counts as a manual
+		 * one rather than passing unnoticed. */
+		if (requested < 0) {
+			requested = night;
+		}
+
+		/* Somebody moved it, and it was not us - the Preview page's button, or
+		 * a /night/ request from elsewhere. Adopt it and let it stand for the
+		 * monitorDelay before automation is allowed to argue. That is what
+		 * makes the button usable on a camera that is also switching itself:
+		 * the whole point of having a button is being able to look at
+		 * something now, without reaching for a shell. */
+		if (night != requested) {
+			syslog(LOG_INFO, "switched to %s by hand, holding %d s",
+				night ? "night" : "day", MANUAL_HOLD);
+			requested = night;
+			hold_until = time(NULL) + MANUAL_HOLD;
+		}
+
+		/* majestic's blind monitor must not be running; see the top of this
+		 * file. Warned about rather than worked around, because there is no
+		 * working around it - it will win every second argument. */
+		if (cfg.light_monitor && !cfg.have_sensor_pin && !warned_monitor) {
+			syslog(LOG_WARNING,
+				"automatic day/night is OFF because nightMode.lightMonitor is "
+				"on. That starts majestic's own light monitor, which cannot "
+				"work on this SoC - its isp_again is always -1, so it forces "
+				"day mode a second after anything sets night, and the camera "
+				"flips every few seconds. Turn lightMonitor OFF: the "
+				"thresholds you set are used here instead, and with it off "
+				"the Preview buttons keep working too.");
+			warned_monitor = 1;
+		}
+
+		if (automate && !cfg.light_monitor && !cfg.have_sensor_pin) {
 			if (cfg.min_threshold < 0 || cfg.max_threshold < 0) {
 				if (!no_thresholds) {
 					syslog(LOG_WARNING,
-						"lightMonitor is on with no lightSensorPin, so the "
-						"light level is read here - but nightMode.minThreshold "
-						"and nightMode.maxThreshold are not set, so nothing "
-						"will switch. Set them in the web UI.");
+						"no automatic day/night: set nightMode.minThreshold "
+						"and nightMode.maxThreshold in the web UI. Setting "
+						"the pair is what enables it here - leave "
+						"nightMode.lightMonitor off.");
 					no_thresholds = 1;
 				}
 			} else {
@@ -432,15 +529,19 @@ int main(void) {
 				 * here - which would read as broad daylight forever. */
 				int gain = cfg.adc_readout ? read_adc() : read_gain();
 				const char *source = cfg.adc_readout ? "adc" : "gain";
-				/* monitorDelay is majestic's own name for how long to leave a
-				 * switch alone. It matters more here than it looks: this gain
-				 * comes from the ISP, so switching changes the very number the
-				 * decision was made from, and without a pause the picture
-				 * hunts between colour and grey. */
-				int delay = cfg.monitor_delay > 0 ? cfg.monitor_delay : 0;
+				/* monitorDelay is how long the light has to STAY past a
+				 * threshold before it is believed - not how long to wait after
+				 * switching. The difference is the whole reason it is set: a
+				 * torch swept across the lens must not change the mode, and a
+				 * cooldown would not stop that, it would switch immediately and
+				 * only then wait. Taken exactly as configured; second-guessing
+				 * a number somebody chose in the web UI is not this program's
+				 * job, and a default applies only when it is not set at all. */
+				int delay = cfg.monitor_delay >= 0 ?
+					cfg.monitor_delay : DEFAULT_DELAY;
 				time_t now = time(NULL);
 
-				if (gain >= 0 && now - last_switch >= delay) {
+				if (gain >= 0 && now >= hold_until) {
 					int want = night;
 					if (gain > cfg.max_threshold) {
 						want = 1;
@@ -448,19 +549,34 @@ int main(void) {
 						want = 0;
 					}
 
-					if (want != night && !request_night(want)) {
-						syslog(LOG_INFO, "%s %d -> %s", source, gain,
+					/* Restart the clock whenever the answer changes, so only an
+					 * unbroken run past the threshold counts. */
+					if (want != pending) {
+						pending = want;
+						pending_since = now;
+					}
+
+					if (want != night && now - pending_since >= delay &&
+					    !request_night(want)) {
+						syslog(LOG_INFO, "%s %d for %lds -> %s", source, gain,
+							(long)(now - pending_since),
 							want ? "night" : "day");
-						last_switch = now;
+						requested = want;
 						night = want;
 					}
 				}
 			}
 		}
 
-		if (night != applied) {
+		/* colorToGray is majestic's own setting for whether night mode should
+		 * desaturate at all. Somebody who turns it off wants the IR-cut and the
+		 * lamp without losing colour, and honouring it here is the difference
+		 * between following that setting and ignoring it. */
+		int grey = night && cfg.color_to_gray;
+
+		if (grey != applied) {
 			char reply[512];
-			if (set_blackwhite(night, reply, sizeof(reply))) {
+			if (set_blackwhite(grey, reply, sizeof(reply))) {
 				if (!complained) {
 					syslog(LOG_WARNING,
 						"cannot switch the ISP: no plugin on port %d "
@@ -469,8 +585,8 @@ int main(void) {
 					complained = 1;
 				}
 			} else {
-				syslog(LOG_INFO, "night %d: %s", night, reply);
-				applied = night;
+				syslog(LOG_INFO, "night %d grey %d: %s", night, grey, reply);
+				applied = grey;
 				complained = 0;
 			}
 		}
