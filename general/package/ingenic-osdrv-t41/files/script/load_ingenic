@@ -124,7 +124,18 @@ fi
 
 lsmod | grep "audio" >/dev/null
 if [ $? -ne 0 ]; then
-	modprobe audio spk_gpio=-1 spk_level=1
+	# No spk_gpio here, unlike the t20/t31 scripts. The vendor's audio.ko took
+	# the speaker amplifier's enable pin as a module parameter; the one built
+	# from openingenic for T41 does not declare it at all - its parameters are
+	# aic_enable, dmic_enable, internal_codec, excodec_*, samplerate and
+	# mic_mono_channel - so passing spk_gpio and spk_level only looked like
+	# configuring the speaker while being silently ignored.
+	#
+	# The amplifier is driven from userspace instead, through majestic's
+	# .audio.speakerPin, which is claimed further down with the other pins. On
+	# the DML16-Z533 variant that has a speaker fitted the pin is 63 (PB31),
+	# active-high, per the vendor audio.ko's own defaults.
+	modprobe audio
 	check_return "insmod audio"
 fi
 
