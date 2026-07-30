@@ -152,7 +152,12 @@ fi
 # claim before majestic is installed. Without this guard cli prints
 # "Failed to open input file /etc/majestic.yaml" once per GPIO at every boot.
 if [ ! -z "$(lsmod | grep "gpio")" ] && [ -f /etc/majestic.yaml ]; then
-	GPIOS=".nightMode.irCutPin1 .nightMode.irCutPin2 .nightMode.irSensorPin .nightMode.backlightPin .audio.speakerPin"
+	# irSensorPin is the old name for the light sensor and this majestic calls
+	# it lightSensorPin - its key table has no irSensorPin at all. Both are
+	# listed rather than swapped: a key that is not in the configuration simply
+	# yields nothing here, so carrying the old one costs a lookup and keeps an
+	# older streamer working.
+	GPIOS=".nightMode.irCutPin1 .nightMode.irCutPin2 .nightMode.irSensorPin .nightMode.lightSensorPin .nightMode.backlightPin .audio.speakerPin"
 	for GPIO in $(echo ${GPIOS})
 	do
 		G=$(cli -g ${GPIO})
