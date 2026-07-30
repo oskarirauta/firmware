@@ -35,7 +35,7 @@
  * two endpoints. Thresholds, hysteresis and the delay between switches all come
  * from majestic's configuration, so they are still edited in one place.
  *
- *   adc    a photoresistor on SADC AUX0, when isp.adcReadout says this camera
+ *   adc    a photoresistor on SADC AUX0, when nightMode.adcReadout says this camera
  *          has one worth reading. Preferred where it exists: it measures the
  *          room, independently of the pipeline.
  *   gain   the ISP's own analog gain from /proc/jz/isp, which is what feeds the
@@ -111,7 +111,7 @@
  *   nightMode.lightSensorPin a digital light sensor on a GPIO. Where one is
  *                            configured, majestic's hardware monitor owns the
  *                            decision and this program stays out of it.
- *   isp.adcReadout           says the camera has a photoresistor worth reading,
+ *   nightMode.adcReadout     says the camera has a photoresistor worth reading,
  *                            and selects it as the light source in place of the
  *                            ISP's gain. Which AUX channel it is on, and its
  *                            polarity, are board facts and live in the U-Boot
@@ -209,7 +209,7 @@
 struct night_config {
 	int light_monitor;
 	int have_sensor_pin;
-	int adc_readout;	/* isp.adcReadout: this camera has a photoresistor */
+	int adc_readout;	/* nightMode.adcReadout: there is a photoresistor */
 	int color_to_gray;	/* nightMode.colorToGray: grey the picture at night */
 	int have_ircut;		/* nightMode.irCutPin1: a filter is configured */
 	int min_threshold;	/* back to day below this */
@@ -232,11 +232,10 @@ static void read_config(struct night_config *c) {
 	}
 
 	char line[256];
-	enum { OTHER, NIGHT, ISP } section = OTHER;
+	enum { OTHER, NIGHT } section = OTHER;
 	while (fgets(line, sizeof(line), f)) {
 		if (line[0] != ' ' && line[0] != '\t') {
-			section = !strncmp(line, "nightMode:", 10) ? NIGHT :
-				  !strncmp(line, "isp:", 4) ? ISP : OTHER;
+			section = !strncmp(line, "nightMode:", 10) ? NIGHT : OTHER;
 			continue;
 		}
 
@@ -260,15 +259,9 @@ static void read_config(struct night_config *c) {
 			val++;
 		}
 
-		if (section == ISP) {
-			if (!strcmp(key, "adcReadout")) {
-				c->adc_readout = yaml_bool(val);
-			}
-
-			continue;
-		}
-
-		if (!strcmp(key, "irCutPin1")) {
+		if (!strcmp(key, "adcReadout")) {
+			c->adc_readout = yaml_bool(val);
+		} else if (!strcmp(key, "irCutPin1")) {
 			c->have_ircut = 1;
 		} else if (!strcmp(key, "colorToGray")) {
 			c->color_to_gray = yaml_bool(val);
@@ -812,8 +805,8 @@ int main(void) {
 							"no light reading from the '%s' source, so "
 							"nothing will switch%s", source,
 							cfg.adc_readout ? " - is the photoresistor "
-							"fitted, and isp.adcReadout right for this "
-							"camera?" : " - is the stream running?");
+							"fitted, and nightMode.adcReadout right for "
+							"this camera?" : " - is the stream running?");
 						no_reading = 1;
 					}
 				} else if (no_reading) {

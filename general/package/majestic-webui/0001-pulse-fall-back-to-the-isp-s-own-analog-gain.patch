@@ -13,7 +13,7 @@ units as the thresholds the user then types in, or it is worse than showing
 nothing at all.
 
 A camera with a photoresistor reads its light from the ADC - which is what
-isp.adcReadout says - and that is the number its thresholds are compared
+nightMode.adcReadout says - and that is the number its thresholds are compared
 against. One without reads the ISP's own analog gain, published in
 /proc/jz/isp as AeAGain, the same quantity majestic's help text names for the
 thresholds. Choosing between them by the same setting the switching itself
@@ -61,7 +61,7 @@ against, rather than a second opinion formed differently.
 +# The number does exist, in one of two places, and showing the right one is the
 +# whole point: it has to be in the units the thresholds are chosen in.
 +#
-+#   isp.adcReadout on   the camera has a photoresistor, its light level comes
++#   nightMode.adcReadout on  the camera has a photoresistor, its light level comes
 +#                       from the ADC, and that is what the thresholds compare
 +#                       against - so that is what belongs here.
 +#   otherwise           the ISP's own analog gain, which is the quantity
@@ -98,7 +98,7 @@ against, rather than a second opinion formed differently.
 +
 +if [ -z "$daynight_value" ] || [ "$daynight_value" = "-1" ]; then
 +	if [ -d /proc/jz/isp ]; then
-+		if [ "$(cli -g .isp.adcReadout 2>/dev/null)" = "true" ] &&
++		if [ "$(cli -g .nightMode.adcReadout 2>/dev/null)" = "true" ] &&
 +		   [ -r /dev/jz_adc_aux_0 ]; then
 +			# A binary unsigned long rather than text, so od converts it.
 +			# The device name is the one load_ingenic points at whichever
