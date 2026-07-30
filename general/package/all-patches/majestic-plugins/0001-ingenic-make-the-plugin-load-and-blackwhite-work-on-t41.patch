@@ -1,0 +1,232 @@
+ingenic: make the plugin load, and blackwhite work, on T41
+
+Two separate problems, both fatal on T41 and neither visible on t31.
+
+The plugin did not load at all. T41's libimp exports no GetContrast, no
+GetSensorFPS and neither flip call, and musl resolves a shared object's
+symbols when it is loaded rather than when they are first called - so a
+single missing symbol makes dlopen() fail and every command in the plugin
+goes with it, including the ones whose symbols were present. Declaring
+them weak makes an absent symbol resolve to NULL instead, so the loss is
+confined to the one command that needs it. Each call site checks.
+
+blackwhite did not work. IMP_ISP_Tuning_SetISPRunningMode is exported on
+T41 but faults inside the library, so keeping the same route could not
+repair it. The ISP driver carries the same day/night switch as a module
+parameter, so use that where it exists and fall through to the library
+call where it does not - which is every other SoC, so nothing there
+changes. The same applies to brightness and contrast, which is why the
+lookup is written once and shared.
+
+The module directory is found rather than assumed, because the driver is
+named after its SoC (tx-isp-t41 and so on).
+
+This matters beyond the plugin: majestic has no ingenic implementation of
+the grey conversion - it logs "Not implemented for platform ingenic" - so
+on these parts this command is the only thing that makes the picture
+actually turn grey.
+
+Rotation is deliberately left unsupported rather than routed through the
+sensor's shvflip parameter: the driver re-applies that when the stream
+starts, not when the parameter is written, so setting it here would look
+like it worked and change nothing until the next restart.
+
+--- a/ingenic/custom.c
++++ b/ingenic/custom.c
+@@ -3,8 +3,108 @@
+ #include <sysutils/su_base.h>
+ #include <plugin.h>
+ 
++#include <dirent.h>
++#include <fcntl.h>
++
++/* Not every T-series libimp exports the whole tuning API. T41's has no
++ * GetContrast, no GetSensorFPS and neither flip call, and musl resolves a
++ * shared object's symbols when it is loaded rather than when they are first
++ * called - so one missing symbol makes dlopen() fail and takes every command
++ * in the plugin with it, including the ones that would have worked.
++ *
++ * Weak declarations make an absent symbol resolve to NULL instead, confining
++ * the loss to the one command that needs it. Every call site checks. */
++#define WEAK __attribute__((weak))
++WEAK int IMP_ISP_Tuning_GetContrast(unsigned char *pcontrast);
++WEAK int IMP_ISP_Tuning_GetSensorFPS(uint32_t *pfps_num, uint32_t *pfps_den);
++WEAK int IMP_ISP_Tuning_SetISPHflip(IMPISPTuningOpsMode mode);
++WEAK int IMP_ISP_Tuning_SetISPVflip(IMPISPTuningOpsMode mode);
++WEAK int IMP_ISP_Tuning_SetISPRunningMode(IMPISPRunningMode mode);
++WEAK int IMP_ISP_Tuning_SetBrightness(unsigned char bright);
++WEAK int IMP_ISP_Tuning_GetBrightness(unsigned char *pbright);
++WEAK int IMP_ISP_Tuning_SetContrast(unsigned char contrast);
++
++/* Some of these knobs are reachable through the ISP driver instead, as module
++ * parameters, and on T41 that is the only route that works: the library either
++ * does not export the call or faults inside it. The driver is named after its
++ * SoC (tx-isp-t41 and so on), so the module directory is found rather than
++ * assumed, and a SoC whose driver has no such parameter falls through to the
++ * library exactly as before. */
++static int isp_param_path(const char *name, char *out, size_t len) {
++	DIR *d = opendir("/sys/module");
++	if (!d) {
++		return 0;
++	}
++
++	struct dirent *e;
++	int found = 0;
++	while (!found && (e = readdir(d))) {
++		if (strncmp(e->d_name, "tx_isp", 6) && strncmp(e->d_name, "tx-isp", 6)) {
++			continue;
++		}
++
++		snprintf(out, len, "/sys/module/%s/parameters/%s", e->d_name, name);
++		found = access(out, F_OK) == 0;
++	}
++
++	closedir(d);
++	return found;
++}
++
++static int isp_param_write(const char *name, int value) {
++	char path[128], buf[16];
++	if (!isp_param_path(name, path, sizeof(path))) {
++		return 0;
++	}
++
++	int fd = open(path, O_WRONLY);
++	if (fd < 0) {
++		return 0;
++	}
++
++	int len = snprintf(buf, sizeof(buf), "%d", value);
++	int ok = write(fd, buf, len) == len;
++	close(fd);
++	return ok;
++}
++
++static int isp_param_read(const char *name, int *value) {
++	char path[128], buf[16];
++	if (!isp_param_path(name, path, sizeof(path))) {
++		return 0;
++	}
++
++	int fd = open(path, O_RDONLY);
++	if (fd < 0) {
++		return 0;
++	}
++
++	int n = read(fd, buf, sizeof(buf) - 1);
++	close(fd);
++	if (n <= 0) {
++		return 0;
++	}
++
++	buf[n] = 0;
++	*value = atoi(buf);
++	return 1;
++}
++
+ static void set_blackwhite(const char *value) {
+ 	bool index = strlen(value) ? atoi(value) : false;
++	/* On T41 IMP_ISP_Tuning_SetISPRunningMode is exported but faults inside
++	 * the library, so the driver parameter is not a fallback here - it is the
++	 * only route. It also matters beyond this command: majestic has no ingenic
++	 * implementation of the grey conversion ("Not implemented for platform
++	 * ingenic"), so this is what makes the picture actually turn grey. */
++	if (isp_param_write("daynight", index)) {
++		RETURN("Set blackwhite: %d", index);
++	}
++
++	if (!IMP_ISP_Tuning_SetISPRunningMode) {
++		RETURN("Set blackwhite unsupported on this SoC");
++	}
++
+ 	if (IMP_ISP_Tuning_SetISPRunningMode(index)) {
+ 		RETURN("IMP_ISP_Tuning_SetISPRunningMode failed");
+ 	}
+@@ -15,13 +115,30 @@
+ static void set_brightness(const char *value) {
+ 	if (strlen(value)) {
+ 		unsigned char index = atoi(value);
++		if (isp_param_write("brightness", index)) {
++			RETURN("Set brightness: %d", index);
++		}
++
++		if (!IMP_ISP_Tuning_SetBrightness) {
++			RETURN("Set brightness unsupported on this SoC");
++		}
++
+ 		if (IMP_ISP_Tuning_SetBrightness(index)) {
+ 			RETURN("IMP_ISP_Tuning_SetBrightness failed");
+ 		}
+ 
+ 		RETURN("Set brightness: %d", index);
+ 	} else {
++		int param;
++		if (isp_param_read("brightness", &param)) {
++			RETURN("Get brightness: %d", param);
++		}
++
+ 		unsigned char current;
++		if (!IMP_ISP_Tuning_GetBrightness) {
++			RETURN("Get brightness unsupported on this SoC");
++		}
++
+ 		if (IMP_ISP_Tuning_GetBrightness(&current)) {
+ 			RETURN("IMP_ISP_Tuning_GetBrightness failed");
+ 		}
+@@ -33,13 +150,30 @@
+ static void set_contrast(const char *value) {
+ 	if (strlen(value)) {
+ 		unsigned char index = atoi(value);
++		if (isp_param_write("contrast", index)) {
++			RETURN("Set contrast: %d", index);
++		}
++
++		if (!IMP_ISP_Tuning_SetContrast) {
++			RETURN("Set contrast unsupported on this SoC");
++		}
++
+ 		if (IMP_ISP_Tuning_SetContrast(index)) {
+ 			RETURN("IMP_ISP_Tuning_SetContrast failed");
+ 		}
+ 
+ 		RETURN("Set contrast: %d", index);
+ 	} else {
++		int param;
++		if (isp_param_read("contrast", &param)) {
++			RETURN("Get contrast: %d", param);
++		}
++
+ 		unsigned char current;
++		if (!IMP_ISP_Tuning_GetContrast) {
++			RETURN("Get contrast unsupported on this SoC");
++		}
++
+ 		if (IMP_ISP_Tuning_GetContrast(&current)) {
+ 			RETURN("IMP_ISP_Tuning_GetContrast failed");
+ 		}
+@@ -51,6 +185,14 @@
+ static void set_rotation(const char *value) {
+ 	int index = strlen(value) ? atoi(value) : -1;
+ 
++	/* Not routed through the driver on T41. The sensor carries the flip as a
++	 * module parameter, but it is applied when the stream starts rather than
++	 * when the parameter is written, so setting it here would appear to work
++	 * and change nothing until the next restart. Better to say so. */
++	if (!IMP_ISP_Tuning_SetISPHflip || !IMP_ISP_Tuning_SetISPVflip) {
++		RETURN("Rotation unsupported on this SoC");
++	}
++
+ 	switch (index) {
+ 		case 0:
+ 			IMP_ISP_Tuning_SetISPHflip(0);
+@@ -90,6 +232,10 @@
+ 		RETURN("Set fps: %d", index);
+ 	} else {
+ 		uint32_t current;
++		if (!IMP_ISP_Tuning_GetSensorFPS) {
++			RETURN("Get fps unsupported on this SoC");
++		}
++
+ 		if (IMP_ISP_Tuning_GetSensorFPS(&current, &fps_den)) {
+ 			RETURN("IMP_ISP_Tuning_GetSensorFPS failed");
+ 		}

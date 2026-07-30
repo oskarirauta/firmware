@@ -1,0 +1,46 @@
+#!/bin/sh
+#
+# Starts after majestic, because it has nothing to do until majestic is up.
+# It tolerates majestic being absent or slow either way - it simply waits - so
+# the ordering is a courtesy rather than a requirement.
+
+DAEMON="nightsync"
+PIDFILE="/var/run/$DAEMON.pid"
+
+start() {
+	echo -n "Starting $DAEMON: "
+	start-stop-daemon -b -m -S -q -p "$PIDFILE" -x "$DAEMON"
+	if [ $? -eq 0 ]; then
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+}
+
+stop() {
+	echo -n "Stopping $DAEMON: "
+	start-stop-daemon -K -q -p "$PIDFILE"
+	if [ $? -eq 0 ]; then
+		rm -f "$PIDFILE"
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+}
+
+case "$1" in
+	start|stop)
+		$1
+		;;
+
+	restart|reload)
+		stop
+		sleep 1
+		start
+		;;
+
+	*)
+		echo "Usage: $0 {start|stop|restart|reload}"
+		exit 1
+		;;
+esac

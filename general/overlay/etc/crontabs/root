@@ -8,10 +8,3 @@
 # |    |      |     |     |
 # *    *      *     *     *     command to be executed
 #
-
-# Automatic day/night, where the platform has a script that owns the switch.
-# The guard is what makes this safe to keep in the shared crontab: on a platform
-# with no such script the line costs one test and does nothing. Where the script
-# does exist it still does nothing until the light thresholds are set, so this is
-# inert on an uncalibrated camera too - see "daynight" for what to set.
-* * * * * [ -x /usr/bin/daynight ] && /usr/bin/daynight cron

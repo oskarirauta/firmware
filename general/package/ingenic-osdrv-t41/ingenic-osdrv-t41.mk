@@ -53,6 +53,10 @@ define INGENIC_OSDRV_T41_BUILD_CMDS
 		-o $(@D)/libimp_t41_shim.so \
 		$(INGENIC_OSDRV_T41_PKGDIR)/files/src/imp_t41_shim.c \
 		$(TARGET_LDFLAGS)
+	$(TARGET_CC) $(TARGET_CFLAGS) -Wall \
+		-o $(@D)/nightsync \
+		$(INGENIC_OSDRV_T41_PKGDIR)/files/src/nightsync.c \
+		$(TARGET_LDFLAGS)
 endef
 
 define INGENIC_OSDRV_T41_INSTALL_TARGET_CMDS
@@ -64,8 +68,12 @@ define INGENIC_OSDRV_T41_INSTALL_TARGET_CMDS
 
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/usr/bin
 	$(INSTALL) -m 755 -t $(TARGET_DIR)/usr/bin \
-		$(INGENIC_OSDRV_T41_PKGDIR)/files/script/load_ingenic \
-		$(INGENIC_OSDRV_T41_PKGDIR)/files/script/daynight
+		$(INGENIC_OSDRV_T41_PKGDIR)/files/script/load_ingenic
+	$(INSTALL) -m 755 -t $(TARGET_DIR)/usr/bin $(@D)/nightsync
+
+	$(INSTALL) -m 755 -d $(TARGET_DIR)/etc/init.d
+	$(INSTALL) -m 755 -t $(TARGET_DIR)/etc/init.d \
+		$(INGENIC_OSDRV_T41_PKGDIR)/files/script/S96nightsync
 # Bake in the sensor this image was built for. It is the last resort in
 # load_ingenic, used when the u-boot environment names no sensor and sinfo
 # cannot identify one - which is what happens on an untouched camera, because
@@ -86,5 +94,22 @@ define INGENIC_OSDRV_T41_INSTALL_TARGET_CMDS
 	$(INSTALL) -m 644 -t $(TARGET_DIR)/usr/lib $(@D)/libimp_t41_shim.so
 endef
 
+
+# majestic loads plugins only when it is told to, and the plugin is where the
+# grey conversion lives on this SoC - so without this the Preview page's Night
+# button moves the filter and leaves the picture in colour. Done as a finalize
+# hook rather than in the install step because majestic writes this file itself
+# and the two packages have no ordering between them; finalize runs after both.
+ifeq ($(BR2_PACKAGE_MAJESTIC_PLUGINS),y)
+define INGENIC_OSDRV_T41_ENABLE_PLUGINS
+	if ! grep -q '^  plugins:' $(TARGET_DIR)/etc/majestic.yaml; then \
+		$(SED) '/^system:/a\  plugins: true' $(TARGET_DIR)/etc/majestic.yaml; \
+	fi
+	grep -q '^  plugins: true' $(TARGET_DIR)/etc/majestic.yaml
+endef
+ifeq ($(BR2_PACKAGE_INGENIC_OSDRV_T41),y)
+TARGET_FINALIZE_HOOKS += INGENIC_OSDRV_T41_ENABLE_PLUGINS
+endif
+endif
 
 $(eval $(generic-package))
