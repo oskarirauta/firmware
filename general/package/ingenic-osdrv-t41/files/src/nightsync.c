@@ -16,25 +16,41 @@
  * publishes, and applies the missing half whenever it changes.
  *
  * It also supplies the light reading, on the cameras where majestic cannot get
- * one. majestic has two monitors: a hardware one on lightSensorPin, which works
- * here because the driver's device is symlinked to the name it expects, and a
- * software one that compares its isp_again metric against minThreshold and
- * maxThreshold. On Ingenic the software one is blind - majestic imports no ISP
- * gain function from libimp at all and never reads /proc/jz/isp, so isp_again
- * stays -1 - and a camera built without a photoresistor has no hardware sensor
- * either, which leaves it with no automatic day/night at all.
+ * one - which is most of them here. majestic has two monitors. The hardware one
+ * watches lightSensorPin, and that is a GPIO: the streamer's own schema calls it
+ * "GPIO pin for light sensor", so it wants a digital day/night signal. The
+ * software one compares its isp_again metric against minThreshold and
+ * maxThreshold, and on Ingenic that is blind - majestic imports no ISP gain
+ * function from libimp at all and never opens /proc/jz/isp, so isp_again stays
+ * -1.
  *
- * The number itself is not missing, only majestic's route to it: the ISP
- * publishes its own analog gain in /proc/jz/isp as AeAGain, and the web UI's
- * light readout is already fed from exactly there. So where majestic has no
- * sensor to read, this reads that and calls /night/on and /night/off - the same
- * shape as OpenIPC's own autonight, which reads an ADC and calls the same two
- * endpoints. Thresholds, hysteresis and the delay between switches all come
+ * majestic does read an ADC, but only to publish it: adcReadout is a value for
+ * the web UI to show, not an input to the night decision. So a camera whose
+ * light sensor is a photoresistor on the SADC has nothing majestic can decide
+ * from, and neither has one with no sensor at all.
+ *
+ * Both numbers exist, only majestic's route to them does not, so this reads
+ * whichever the camera has and calls /night/on and /night/off. That is the same
+ * shape as OpenIPC's own autonight, which reads the same ADC and calls the same
+ * two endpoints. Thresholds, hysteresis and the delay between switches all come
  * from majestic's configuration, so they are still edited in one place.
  *
- * It stays out of the way whenever majestic can do it: with lightMonitor off
- * nothing is automatic and the buttons are in charge, and with a lightSensorPin
- * configured majestic's own hardware monitor owns it.
+ *   adc    a photoresistor on SADC AUX0, when isp.adcReadout says this camera
+ *          has one worth reading. Preferred where it exists: it measures the
+ *          room, independently of the pipeline.
+ *   gain   the ISP's own analog gain from /proc/jz/isp, which is what feeds the
+ *          web UI's light readout. Needs no extra component, so it is what is
+ *          left when there is no photoresistor. Note that it is a measurement of
+ *          the pipeline, so switching moves it - which is what monitorDelay is
+ *          for below.
+ *
+ * Both read higher as it gets darker, so one threshold pair serves either and
+ * the comparison never changes direction. A board wired the other way round is
+ * normalised by the ADC driver's own invert parameter, not here.
+ *
+ * It stays out of the way whenever majestic can do the job: with lightMonitor
+ * off nothing is automatic and the buttons are in charge, and with a
+ * lightSensorPin configured majestic's own hardware monitor owns it.
  *
  * The grey conversion itself is not done here either. It goes through the
  * majestic plugin, which is where OpenIPC keeps per-SoC ISP knowledge, so there
@@ -89,6 +105,7 @@
 struct night_config {
 	int light_monitor;
 	int have_sensor_pin;
+	int adc_readout;	/* isp.adcReadout: this camera has a photoresistor */
 	int min_threshold;	/* back to day below this */
 	int max_threshold;	/* to night above this */
 	int monitor_delay;	/* seconds; -1 if unset */
@@ -108,14 +125,15 @@ static void read_config(struct night_config *c) {
 	}
 
 	char line[256];
-	int in_night = 0;
+	enum { OTHER, NIGHT, ISP } section = OTHER;
 	while (fgets(line, sizeof(line), f)) {
 		if (line[0] != ' ' && line[0] != '\t') {
-			in_night = !strncmp(line, "nightMode:", 10);
+			section = !strncmp(line, "nightMode:", 10) ? NIGHT :
+				  !strncmp(line, "isp:", 4) ? ISP : OTHER;
 			continue;
 		}
 
-		if (!in_night) {
+		if (section == OTHER) {
 			continue;
 		}
 
@@ -135,6 +153,14 @@ static void read_config(struct night_config *c) {
 			val++;
 		}
 
+		if (section == ISP) {
+			if (!strcmp(key, "adcReadout")) {
+				c->adc_readout = yaml_bool(val);
+			}
+
+			continue;
+		}
+
 		if (!strcmp(key, "lightMonitor")) {
 			c->light_monitor = yaml_bool(val);
 		} else if (!strcmp(key, "lightSensorPin")) {
@@ -149,6 +175,36 @@ static void read_config(struct night_config *c) {
 	}
 
 	fclose(f);
+}
+
+/* The photoresistor, when there is one. A binary unsigned long rather than text,
+ * and read fresh each time - the driver converts on read. Both device names are
+ * tried: the driver registers itself as ingenic_adc_aux_%d, while the older
+ * vendor name is what majestic opens, and load_ingenic symlinks one to the
+ * other, so either may be the real one depending on boot order. */
+static int read_adc(void) {
+	static const char *devices[] = {
+		"/dev/ingenic_adc_aux_0",
+		"/dev/jz_adc_aux_0",
+		NULL
+	};
+
+	for (int i = 0; devices[i]; i++) {
+		FILE *f = fopen(devices[i], "rb");
+		if (!f) {
+			continue;
+		}
+
+		unsigned long value = 0;
+		int got = fread(&value, sizeof(value), 1, f) == 1;
+		fclose(f);
+
+		if (got) {
+			return (int)value;
+		}
+	}
+
+	return -1;
 }
 
 /* The ISP's own analog gain, the same number the web UI shows and the same one
@@ -320,7 +376,16 @@ int main(void) {
 			} else {
 				no_thresholds = 0;
 
-				int gain = read_gain();
+				/* Which sensor this camera actually has. adcReadout is
+				 * majestic's own way of saying "there is a photoresistor
+				 * here worth reading", so it selects the source and the
+				 * choice stays in the web UI with everything else. It is
+				 * not guessed from whether the device opens: an unfitted
+				 * photoresistor still opens and still returns a number -
+				 * a steady near-zero, measured at 4 to 35 units on one
+				 * here - which would read as broad daylight forever. */
+				int gain = cfg.adc_readout ? read_adc() : read_gain();
+				const char *source = cfg.adc_readout ? "adc" : "gain";
 				/* monitorDelay is majestic's own name for how long to leave a
 				 * switch alone. It matters more here than it looks: this gain
 				 * comes from the ISP, so switching changes the very number the
@@ -338,7 +403,7 @@ int main(void) {
 					}
 
 					if (want != night && !request_night(want)) {
-						syslog(LOG_INFO, "gain %d -> %s", gain,
+						syslog(LOG_INFO, "%s %d -> %s", source, gain,
 							want ? "night" : "day");
 						last_switch = now;
 						night = want;
