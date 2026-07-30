@@ -32,6 +32,29 @@
 		"image.hue": "hue"
 	};
 
+	/* Orientation is two checkboxes here and one number at the sensor, so both
+	 * are read whenever either changes. Bit 0 is mirror, bit 1 is flip, which
+	 * is the order the plugin's rotation command already used. If the page has
+	 * no such fields nothing happens, which is the right answer for a platform
+	 * that does not offer them. */
+	var FLIPS = { "image.mirror": 1, "image.flip": 2 };
+
+	function rotationValue() {
+		var v = 0;
+		for (var key in FLIPS) {
+			if (!Object.prototype.hasOwnProperty.call(FLIPS, key)) {
+				continue;
+			}
+
+			var el = document.getElementById("mjf-" + key.replace(/\./g, "-"));
+			if (el && el.checked) {
+				v |= FLIPS[key];
+			}
+		}
+
+		return v;
+	}
+
 	/* The plugin's knobs are 0-255, the range libimp's own calls use. The
 	 * slider is on whatever range the streamer's schema declares, so the
 	 * mapping is taken from the element rather than assumed - if the schema
@@ -96,7 +119,15 @@
 
 		/* mj-settings.js names every field mjf- plus the setting path with its
 		 * dots turned into dashes. */
-		var cmd = KNOBS[el.id.slice(4).replace(/-/g, ".")];
+		var key = el.id.slice(4).replace(/-/g, ".");
+
+		if (Object.prototype.hasOwnProperty.call(FLIPS, key)) {
+			pending.rotation = rotationValue();
+			schedule();
+			return;
+		}
+
+		var cmd = KNOBS[key];
 		if (!cmd) {
 			return;
 		}
