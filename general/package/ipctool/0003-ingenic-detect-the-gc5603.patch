@@ -1,0 +1,48 @@
+ingenic: detect the GC5603
+
+The sensor could not be identified on an Ingenic camera carrying one, so
+`ipcinfo -s` and `-l` returned nothing and detection fell through to
+scanning every address on adapters 0 through 5. That scan is not quiet:
+each unanswered address is one ABRT_7B_ADDR_NOACK from the i2c driver, so
+a single `ipcinfo -l` fills the kernel log.
+
+Two things were missing, and the second is the interesting one.
+
+The GC5603 answers at 7-bit 0x31, which is 0x62 in the shifted form these
+tables hold - i2c_changenshift_addr() halves them - and no address in the
+Ingenic list maps to it, so the part was never addressed at all.
+
+And 0x5603 was listed only in the 8-bit branch. The detector reads the
+product code twice: first from 0x3f0 and 0x3f1 with a two-byte register
+address, then from 0xf0 and 0xf1 with a one-byte one, and each branch has
+its own list of known codes. This sensor answers only to two-byte
+register addresses - it is what its own driver uses to identify it - so
+the first read is the one that succeeds and the first list is the one
+that has to know the code. It did not, so a correct read was discarded
+and the fallback then asked the same part a question it cannot answer.
+
+Verified against the vendor driver, which declares chip id 0x5603, i2c
+address 0x31, and identifies the part by reading 0x3f0 == 0x56 and
+0x3f1 == 0x03 with a two-byte register address.
+
+--- a/src/hal/ingenic.c
++++ b/src/hal/ingenic.c
+@@ -13,7 +13,7 @@
+ static unsigned char ssens_addrs[] = {0x60, 0};
+ static unsigned char omni_addrs[] = {0x6c, 0};
+ static unsigned char onsemi_addrs[] = {0x20, 0};
+-static unsigned char gc_addrs[] = {0x6e, 0x52, 0x42, 0};
++static unsigned char gc_addrs[] = {0x6e, 0x52, 0x42, 0x62, 0};
+ static unsigned char soi_addrs[] = {0x60, 0x80, 0};
+ static unsigned char superpix_addrs[] = {0x78, 0};
+ 
+--- a/src/sensors.c
++++ b/src/sensors.c
+@@ -817,6 +817,7 @@
+     case 0x2093:
+     case 0x4023:
+     case 0x4653:
++    case 0x5603:
+         sprintf(ctx->sensor_id, "GC%04x", res);
+         return true;
+     }
