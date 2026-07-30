@@ -1,6 +1,6 @@
-ingenic: make the plugin load, and blackwhite work, on T41
+ingenic: make the plugin load, and the ISP knobs work, on T41
 
-Two separate problems, both fatal on T41 and neither visible on t31.
+Three problems, all fatal on T41 and none visible on t31.
 
 The plugin did not load at all. T41's libimp exports no GetContrast, no
 GetSensorFPS and neither flip call, and musl resolves a shared object's
@@ -16,15 +16,20 @@ repair it. The ISP driver carries the same day/night switch as a module
 parameter, so use that where it exists and fall through to the library
 call where it does not - which is every other SoC, so nothing there
 changes. The same applies to brightness and contrast, which is why the
-lookup is written once and shared.
-
-The module directory is found rather than assumed, because the driver is
-named after its SoC (tx-isp-t41 and so on).
+lookup is written once and shared. The module directory is found rather
+than assumed, because the driver is named after its SoC.
 
 This matters beyond the plugin: majestic has no ingenic implementation of
 the grey conversion - it logs "Not implemented for platform ingenic" - so
 on these parts this command is the only thing that makes the picture
 actually turn grey.
+
+And the plugin covered only two of the four image knobs the streamer
+offers. saturation, sharpness and hue are added, so every one of them can
+be set while watching the result rather than by saving and looking. They
+take the same route: the driver parameter first, the library call after.
+Hue has no library call to fall back to on T41 - libimp exports none at
+all - so there the parameter is the only route.
 
 Rotation is deliberately left unsupported rather than routed through the
 sensor's shvflip parameter: the driver re-applies that when the stream
@@ -33,7 +38,7 @@ like it worked and change nothing until the next restart.
 
 --- a/ingenic/custom.c
 +++ b/ingenic/custom.c
-@@ -3,8 +3,108 @@
+@@ -3,8 +3,112 @@
  #include <sysutils/su_base.h>
  #include <plugin.h>
  
@@ -57,6 +62,10 @@ like it worked and change nothing until the next restart.
 +WEAK int IMP_ISP_Tuning_SetBrightness(unsigned char bright);
 +WEAK int IMP_ISP_Tuning_GetBrightness(unsigned char *pbright);
 +WEAK int IMP_ISP_Tuning_SetContrast(unsigned char contrast);
++WEAK int IMP_ISP_Tuning_SetSaturation(unsigned char sat);
++WEAK int IMP_ISP_Tuning_GetSaturation(unsigned char *psat);
++WEAK int IMP_ISP_Tuning_SetSharpness(unsigned char sharp);
++WEAK int IMP_ISP_Tuning_GetSharpness(unsigned char *psharp);
 +
 +/* Some of these knobs are reachable through the ISP driver instead, as module
 + * parameters, and on T41 that is the only route that works: the library either
@@ -142,7 +151,7 @@ like it worked and change nothing until the next restart.
  	if (IMP_ISP_Tuning_SetISPRunningMode(index)) {
  		RETURN("IMP_ISP_Tuning_SetISPRunningMode failed");
  	}
-@@ -15,13 +115,30 @@
+@@ -15,13 +119,30 @@
  static void set_brightness(const char *value) {
  	if (strlen(value)) {
  		unsigned char index = atoi(value);
@@ -173,7 +182,7 @@ like it worked and change nothing until the next restart.
  		if (IMP_ISP_Tuning_GetBrightness(&current)) {
  			RETURN("IMP_ISP_Tuning_GetBrightness failed");
  		}
-@@ -33,13 +150,30 @@
+@@ -33,13 +154,30 @@
  static void set_contrast(const char *value) {
  	if (strlen(value)) {
  		unsigned char index = atoi(value);
@@ -204,7 +213,97 @@ like it worked and change nothing until the next restart.
  		if (IMP_ISP_Tuning_GetContrast(&current)) {
  			RETURN("IMP_ISP_Tuning_GetContrast failed");
  		}
-@@ -51,6 +185,14 @@
+@@ -48,9 +186,104 @@
+ 	}
+ }
+ 
++static void set_saturation(const char *value) {
++	if (strlen(value)) {
++		unsigned char index = atoi(value);
++		if (isp_param_write("saturation", index)) {
++			RETURN("Set saturation: %d", index);
++		}
++		if (!IMP_ISP_Tuning_SetSaturation) {
++			RETURN("Set %(cmd)s unsupported on this SoC");
++		}
++
++		if (IMP_ISP_Tuning_SetSaturation(index)) {
++			RETURN("IMP_ISP_Tuning_SetSaturation failed");
++		}
++
++		RETURN("Set saturation: %d", index);
++	} else {
++		int param;
++		if (isp_param_read("saturation", &param)) {
++			RETURN("Get saturation: %d", param);
++		}
++		unsigned char current;
++		if (!IMP_ISP_Tuning_GetSaturation) {
++			RETURN("Get %(cmd)s unsupported on this SoC");
++		}
++
++		if (IMP_ISP_Tuning_GetSaturation(&current)) {
++			RETURN("IMP_ISP_Tuning_GetSaturation failed");
++		}
++
++		RETURN("Get saturation: %d", current);
++	}
++}
++
++static void set_sharpness(const char *value) {
++	if (strlen(value)) {
++		unsigned char index = atoi(value);
++		if (isp_param_write("sharpness", index)) {
++			RETURN("Set sharpness: %d", index);
++		}
++		if (!IMP_ISP_Tuning_SetSharpness) {
++			RETURN("Set %(cmd)s unsupported on this SoC");
++		}
++
++		if (IMP_ISP_Tuning_SetSharpness(index)) {
++			RETURN("IMP_ISP_Tuning_SetSharpness failed");
++		}
++
++		RETURN("Set sharpness: %d", index);
++	} else {
++		int param;
++		if (isp_param_read("sharpness", &param)) {
++			RETURN("Get sharpness: %d", param);
++		}
++		unsigned char current;
++		if (!IMP_ISP_Tuning_GetSharpness) {
++			RETURN("Get %(cmd)s unsupported on this SoC");
++		}
++
++		if (IMP_ISP_Tuning_GetSharpness(&current)) {
++			RETURN("IMP_ISP_Tuning_GetSharpness failed");
++		}
++
++		RETURN("Get sharpness: %d", current);
++	}
++}
++
++static void set_hue(const char *value) {
++	if (strlen(value)) {
++		unsigned char index = atoi(value);
++		if (isp_param_write("hue", index)) {
++			RETURN("Set hue: %d", index);
++		}
++		RETURN("Set hue unsupported on this SoC");
++
++		RETURN("Set hue: %d", index);
++	} else {
++		int param;
++		if (isp_param_read("hue", &param)) {
++			RETURN("Get hue: %d", param);
++		}
++		int current = 0;
++		RETURN("Get hue unsupported on this SoC");
++
++		RETURN("Get hue: %d", current);
++	}
++}
++
  static void set_rotation(const char *value) {
  	int index = strlen(value) ? atoi(value) : -1;
  
@@ -219,7 +318,7 @@ like it worked and change nothing until the next restart.
  	switch (index) {
  		case 0:
  			IMP_ISP_Tuning_SetISPHflip(0);
-@@ -90,6 +232,10 @@
+@@ -90,6 +323,10 @@
  		RETURN("Set fps: %d", index);
  	} else {
  		uint32_t current;
@@ -230,3 +329,13 @@ like it worked and change nothing until the next restart.
  		if (IMP_ISP_Tuning_GetSensorFPS(&current, &fps_den)) {
  			RETURN("IMP_ISP_Tuning_GetSensorFPS failed");
  		}
+@@ -129,6 +366,9 @@
+ 	{ "blackwhite", &set_blackwhite },
+ 	{ "brightness", &set_brightness },
+ 	{ "contrast", &set_contrast },
++	{ "saturation", &set_saturation },
++	{ "sharpness", &set_sharpness },
++	{ "hue", &set_hue },
+ 	{ "rotation", &set_rotation },
+ 	{ "fps", &set_fps },
+ 	{ "aovol", &set_aovol },
