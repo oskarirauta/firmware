@@ -60,12 +60,17 @@
  * That leaves the Preview buttons enabled, which majestic disables whenever
  * lightMonitor is set - so on this platform automatic and manual are both
  * available at once, which they are not otherwise. A switch made by hand is
- * noticed and left alone for MANUAL_HOLD, which is a separate and much longer
- * period than monitorDelay on purpose: monitorDelay says how long a change in
- * the light has to last before it is believed, while this says how long a
- * person gets to look at something after asking to. Someone who presses the
- * button wants to see the scene now, and having it undone a few seconds later
- * would defeat the reason the button is there.
+ * noticed and left alone for up to MANUAL_HOLD, which is a separate and much
+ * longer period than monitorDelay on purpose: monitorDelay says how long a
+ * change in the light has to last before it is believed, while this says how
+ * long a person gets to look at something after asking to. Someone who presses
+ * the button wants to see the scene now, and having it undone a few seconds
+ * later would defeat the reason the button is there.
+ *
+ * "Up to", because the hold only protects a choice the light disagrees with. As
+ * soon as they agree it is dropped - switching to night by hand on a dark
+ * evening is what the light wanted anyway, and should not stop automation at
+ * all.
  *
  * It still stays out of the way where majestic can do the job: a configured
  * lightSensorPin leaves majestic's own hardware monitor in charge.
@@ -111,7 +116,7 @@
 #define CONFIG		"/etc/majestic.yaml"
 #define ISP_PROC	"/proc/jz/isp"
 #define DEFAULT_DELAY	10	/* seconds, only when monitorDelay is unset */
-#define MANUAL_HOLD	300	/* seconds a switch made by hand is left alone */
+#define MANUAL_HOLD	90	/* seconds a switch made by hand is left alone */
 
 /* A second is the compromise. The Preview button has to feel immediate - the
  * whole reason for this is that reaching for a shell instead is impractical,
@@ -544,7 +549,7 @@ int main(void) {
 			/* Only worth saying, or holding, when automation is running -
 			 * there is nothing to hold it against otherwise. */
 			if (automate) {
-				syslog(LOG_INFO, "switched to %s by hand, holding %d s",
+				syslog(LOG_INFO, "switched to %s by hand, holding up to %d s",
 					night ? "night" : "day", MANUAL_HOLD);
 				hold_until = time(NULL) + MANUAL_HOLD;
 			}
@@ -634,12 +639,25 @@ int main(void) {
 					no_reading = 0;
 				}
 
-				if (gain >= 0 && now >= hold_until) {
+				if (gain >= 0) {
 					int want = night;
 					if (gain > cfg.max_threshold) {
 						want = 1;
 					} else if (gain < cfg.min_threshold) {
 						want = 0;
+					}
+
+					/* A hold is only ever protecting a choice that disagrees
+					 * with the light. The moment the two agree there is
+					 * nothing left to protect, so it is dropped rather than
+					 * run down - otherwise switching to night by hand on a
+					 * dark evening, which is exactly what the light wants
+					 * anyway, would stop automation for five minutes for no
+					 * reason. Checked every tick rather than only when the
+					 * button is pressed, so it also covers the light coming
+					 * round to agree with a choice made earlier. */
+					if (want == night && hold_until) {
+						hold_until = 0;
 					}
 
 					/* Restart the clock whenever the answer changes, so only an
@@ -649,7 +667,8 @@ int main(void) {
 						pending_since = now;
 					}
 
-					if (want != night && now - pending_since >= delay &&
+					if (want != night && now >= hold_until &&
+					    now - pending_since >= delay &&
 					    !request_night(want)) {
 						syslog(LOG_INFO, "%s %d for %lds -> %s", source, gain,
 							(long)(now - pending_since),
