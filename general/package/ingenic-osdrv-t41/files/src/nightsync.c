@@ -509,6 +509,14 @@ int main(void) {
 			requested = -1;	/* and adopt whatever state it comes back in,
 					 * rather than reading a restart as somebody
 					 * pressing the button */
+
+			/* A hold must not outlive the majestic it was protecting a
+			 * choice in. The override itself is gone - majestic comes back
+			 * in day mode with no memory of it - so a surviving hold would
+			 * block automation while guarding nothing. */
+			hold_until = 0;
+			pending = -1;
+
 			usleep(POLL_MS * 1000);
 			continue;
 		}
