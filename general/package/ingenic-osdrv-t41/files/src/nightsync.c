@@ -62,10 +62,14 @@
  *                                                              |
  *                                        ingenic.so blackwhite --> ISP driver
  *
- * Requires ".system.plugins true" in majestic's configuration; without it the
- * plugin is never loaded and the socket below is never opened. That is reported
- * once rather than every second, because it is a configuration mistake to fix,
- * not a fault to watch scroll past.
+ * The plugin is preferred but not required, and that is deliberate. Since
+ * 2025-11-21 majestic-plugins is under the Prosperity Public License 3.0.0,
+ * which is free for noncommercial use only, so a camera must not need it
+ * installed for its Night button to work. Where it is there - and where
+ * ".system.plugins true" is set, without which majestic never loads it - the
+ * command goes through it, because that is where OpenIPC keeps per-SoC ISP
+ * knowledge. Where it is not, the same driver parameter is written directly.
+ * The duplication is small and buys the feature its independence.
  */
 
 #include <arpa/inet.h>
@@ -334,10 +338,52 @@ static int request_night(int on) {
 	return transact(HTTP_PORT, request, reply, sizeof(reply));
 }
 
+/* The same switch the plugin writes, written here when there is no plugin to
+ * write it. The driver is named after its SoC, so the module directory is found
+ * rather than assumed. */
+static int write_isp_daynight(int night) {
+	DIR *d = opendir("/sys/module");
+	if (!d) {
+		return -1;
+	}
+
+	struct dirent *e;
+	int done = -1;
+	while (done < 0 && (e = readdir(d))) {
+		if (strncmp(e->d_name, "tx_isp", 6) && strncmp(e->d_name, "tx-isp", 6)) {
+			continue;
+		}
+
+		char path[sizeof("/sys/module//parameters/daynight") + NAME_MAX];
+		snprintf(path, sizeof(path), "/sys/module/%s/parameters/daynight",
+			e->d_name);
+
+		FILE *f = fopen(path, "w");
+		if (!f) {
+			continue;
+		}
+
+		done = fprintf(f, "%d", night) > 0 ? 0 : -1;
+		fclose(f);
+	}
+
+	closedir(d);
+	return done;
+}
+
 static int set_blackwhite(int night, char *reply, size_t len) {
 	char request[32];
 	snprintf(request, sizeof(request), "blackwhite %d\n", night);
-	return transact(PLUGIN_PORT, request, reply, len);
+	if (!transact(PLUGIN_PORT, request, reply, len)) {
+		return 0;
+	}
+
+	if (write_isp_daynight(night)) {
+		return -1;
+	}
+
+	snprintf(reply, len, "set directly (no plugin)");
+	return 0;
 }
 
 int main(void) {
@@ -417,9 +463,9 @@ int main(void) {
 			if (set_blackwhite(night, reply, sizeof(reply))) {
 				if (!complained) {
 					syslog(LOG_WARNING,
-						"cannot reach the plugin on port %d - is "
-						"\".system.plugins true\" set? (%s)",
-						PLUGIN_PORT, strerror(errno));
+						"cannot switch the ISP: no plugin on port %d "
+						"and no tx_isp daynight parameter either",
+						PLUGIN_PORT);
 					complained = 1;
 				}
 			} else {
