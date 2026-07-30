@@ -1,0 +1,111 @@
+sensors: t41: gc5603: apply shvflip when it is written, not at stream on
+
+Making shvflip a module parameter got the value out of the source, but it
+still only reached the sensor when the stream next started. Writing it
+therefore appeared to work and changed nothing until something restarted
+the pipeline - which is the worst of the three possible behaviours,
+because it looks like success.
+
+Apply it on write. The parameter keeps a pointer to the sensor, published
+at probe and retracted at remove, which is the whole of the bookkeeping:
+one driver instance drives one sensor and the parameter is global to the
+module. NULL is exactly the case where there is nothing to apply it to.
+
+Safe to do while streaming. gc5603_set_hvflip() writes absolute values
+rather than reading and modifying - the reads at the top of it assign the
+return code over the value they just fetched, so the "val |" arithmetic
+is against zero - so it cannot lose a race with the ISP's own register
+traffic, and i2c transfers are serialised by the bus lock underneath.
+
+sensor->video.shvflip is kept in step so that the stream-on path
+re-applies what was actually asked for rather than reverting to whatever
+the module was loaded with.
+
+This is what makes image orientation adjustable at all on T41, where
+libimp exports no IMP_ISP_Tuning_SetISPHflip or SetISPVflip and the
+sensor is the only place it can be set.
+
+--- a/kernel/sensors/t41/gc5603/gc5603.c
++++ b/kernel/sensors/t41/gc5603/gc5603.c
+@@ -49,8 +49,53 @@
+ module_param(pwdn_gpio, int, 0444);
+ MODULE_PARM_DESC(pwdn_gpio, "sensor power-down GPIO: -2 take it from userspace (default), -1 none, >=0 force a pin");
+ static int shvflip = 1;
+-module_param(shvflip, int, 0644);
+-MODULE_PARM_DESC(shvflip, "sensor H/V flip: 0 none, 1 mirror, 2 flip, 3 mirror+flip (180 degrees)");
++
++/* The sensor this parameter belongs to, so that writing it can act at once
++ * rather than at the next stream on. One driver instance drives one sensor, and
++ * the parameter is global to the module, so a single pointer is the whole of
++ * the bookkeeping. NULL before probe and after remove, which is exactly when
++ * there is nothing to apply it to. */
++static struct tx_isp_subdev *shvflip_sd;
++static int gc5603_set_hvflip(struct tx_isp_subdev *sd, int enable);
++
++/*
++ * Applied on write. Without this the value only reaches the sensor when the
++ * stream next starts, so setting it appears to work and changes nothing - the
++ * worst of the three possible behaviours, because it looks like success.
++ *
++ * Safe to do while streaming: gc5603_set_hvflip() writes absolute values rather
++ * than reading and modifying, so it cannot lose a race with the ISP's own
++ * register traffic, and i2c transfers are serialised by the bus lock.
++ *
++ * sensor->video.shvflip is kept in step so that the stream-on path re-applies
++ * what was actually asked for rather than reverting to the last boot value.
++ */
++static int gc5603_shvflip_set(const char *val, const struct kernel_param *kp)
++{
++	int ret = param_set_int(val, kp);
++
++	if (ret)
++		return ret;
++
++	if (shvflip_sd) {
++		struct tx_isp_sensor *sensor = sd_to_sensor_device(shvflip_sd);
++
++		if (sensor)
++			sensor->video.shvflip = shvflip;
++
++		gc5603_set_hvflip(shvflip_sd, shvflip);
++	}
++
++	return 0;
++}
++
++static const struct kernel_param_ops gc5603_shvflip_ops = {
++	.set = gc5603_shvflip_set,
++	.get = param_get_int,
++};
++
++module_param_cb(shvflip, &gc5603_shvflip_ops, &shvflip, 0644);
++MODULE_PARM_DESC(shvflip, "sensor H/V flip: 0 none, 1 mirror, 2 flip, 3 mirror+flip (180 degrees); applied immediately");
+ 
+ struct regval_list {
+ 	uint16_t reg_num;
+@@ -578,8 +623,6 @@
+ 	return 0;
+ }
+ 
+-static int gc5603_set_hvflip(struct tx_isp_subdev *sd, int enable);
+-
+ static int gc5603_s_stream(struct tx_isp_subdev *sd, struct tx_isp_initarg *init)
+ {
+ 	int ret = 0;
+@@ -997,6 +1040,7 @@
+ 	tx_isp_set_subdevdata(sd, client);
+ 	tx_isp_set_subdev_hostdata(sd, sensor);
+ 	private_i2c_set_clientdata(client, sd);
++	shvflip_sd = sd;
+ 
+ 	pr_debug("probe ok ------->gc5603\n");
+ 
+@@ -1008,6 +1052,8 @@
+ 	struct tx_isp_subdev *sd = private_i2c_get_clientdata(client);
+ 	struct tx_isp_sensor *sensor = tx_isp_get_subdev_hostdata(sd);
+ 
++	shvflip_sd = NULL;
++
+ 	if(reset_gpio != -1)
+ 		private_gpio_free(reset_gpio);
+ 	if(pwdn_gpio != -1)
