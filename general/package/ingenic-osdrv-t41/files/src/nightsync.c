@@ -485,10 +485,15 @@ int main(void) {
 		 * the whole point of having a button is being able to look at
 		 * something now, without reaching for a shell. */
 		if (night != requested) {
-			syslog(LOG_INFO, "switched to %s by hand, holding %d s",
-				night ? "night" : "day", MANUAL_HOLD);
+			/* Only worth saying, or holding, when automation is running -
+			 * there is nothing to hold it against otherwise. */
+			if (automate) {
+				syslog(LOG_INFO, "switched to %s by hand, holding %d s",
+					night ? "night" : "day", MANUAL_HOLD);
+				hold_until = time(NULL) + MANUAL_HOLD;
+			}
+
 			requested = night;
-			hold_until = time(NULL) + MANUAL_HOLD;
 		}
 
 		/* lightMonitor on means majestic's own light monitor is running, so
@@ -504,7 +509,8 @@ int main(void) {
 		 * still work - those are GPIOs and majestic drives them itself - and
 		 * the grey conversion still follows if anything does reach night mode.
 		 * What is lost is the switching: nothing will move it off day. */
-		if (cfg.light_monitor && !cfg.have_sensor_pin && !warned_monitor) {
+		if (automate && cfg.light_monitor && !cfg.have_sensor_pin &&
+		    !warned_monitor) {
 			syslog(LOG_INFO,
 				"standing down: nightMode.lightMonitor is on, so majestic's "
 				"own monitor decides. Note that it cannot see the light on "
