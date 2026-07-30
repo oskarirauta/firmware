@@ -144,8 +144,39 @@ fi
 # is part of why automatic day/night looked impossible here. A symlink is enough,
 # and is preferable to renaming the device: the driver's name matches the rest of
 # the tree, and anything already using it keeps working.
-if [ -e /dev/ingenic_adc_aux_0 ] && [ ! -e /dev/jz_adc_aux_0 ]; then
-	ln -sf /dev/ingenic_adc_aux_0 /dev/jz_adc_aux_0
+# Which AUX channel the light sensor is actually on. A board fact, so it comes
+# from the environment, and it is a CHANNEL index rather than a GPIO number -
+# hence adc_channel and not adc_pin, which would invite putting a pin number
+# there.
+#
+# Pointing the compatibility symlink at it, rather than teaching each reader
+# about the setting, is what makes one variable enough: majestic opens the old
+# name and nothing else, so a sensor on any channel but 0 leaves its adcReadout
+# dead as well. Aim the link and both it and nightsync follow.
+ADC_CHANNEL=$(fw_printenv -n adc_channel 2>/dev/null)
+[ -n "$ADC_CHANNEL" ] || ADC_CHANNEL=0
+
+if [ -e /dev/ingenic_adc_aux_$ADC_CHANNEL ]; then
+	[ -e /dev/jz_adc_aux_0 ] || ln -sf /dev/ingenic_adc_aux_$ADC_CHANNEL /dev/jz_adc_aux_0
+else
+	# Say so. Left quiet, a channel number with a typo in it produces no link,
+	# whoever reads the ADC falls back to channel 0, and the camera reports a
+	# sensor that is not the one anybody configured.
+	log_vendor "adc_channel=${ADC_CHANNEL} does not exist, no ADC device link made"
+fi
+
+# Polarity, for a photoresistor wired the other way round. The driver returns
+# (invert - reading) clamped at 0, so this is a ceiling to subtract from and
+# wants a value slightly above full scale - 20000 for a 14-bit-ish range - not
+# a boolean. Zero, and the default, leave it alone.
+#
+# The driver is built into the kernel here, so there is no modprobe line to put
+# this on and a value written by hand does not survive a reboot. Writing it at
+# every start is what makes it a setting rather than a fiddle.
+ADC_INVERT=$(fw_printenv -n adc_invert 2>/dev/null)
+if [ -n "$ADC_INVERT" ] && [ -w /sys/module/ingenic_adc_aux/parameters/invert ]; then
+	echo "$ADC_INVERT" >/sys/module/ingenic_adc_aux/parameters/invert
+	log_vendor "ADC invert ceiling set to ${ADC_INVERT}"
 fi
 
 # The GPIO claims come from majestic's configuration, so there is nothing to

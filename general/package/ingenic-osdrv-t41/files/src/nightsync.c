@@ -111,9 +111,13 @@
  *   nightMode.lightSensorPin a digital light sensor on a GPIO. Where one is
  *                            configured, majestic's hardware monitor owns the
  *                            decision and this program stays out of it.
- *   isp.adcReadout           says the camera has a photoresistor on SADC AUX0
- *                            worth reading, and selects it as the light source
- *                            in place of the ISP's gain.
+ *   isp.adcReadout           says the camera has a photoresistor worth reading,
+ *                            and selects it as the light source in place of the
+ *                            ISP's gain. Which AUX channel it is on, and its
+ *                            polarity, are board facts and live in the U-Boot
+ *                            environment as adc_channel and adc_invert - see
+ *                            load_ingenic, which aims the device link and sets
+ *                            the driver parameter from them.
  *
  * And the one setting that is not majestic's, because majestic has no key for
  * it and an invented one would not survive - majestic rewrites its own file
@@ -270,8 +274,12 @@ static void read_config(struct night_config *c) {
  * other, so either may be the real one depending on boot order. */
 static int read_adc(void) {
 	static const char *devices[] = {
-		"/dev/ingenic_adc_aux_0",
+		/* The compatibility name first, deliberately: load_ingenic points it
+		 * at whichever AUX channel the board's sensor is on, so it carries the
+		 * configuration. The driver's own name for channel 0 is the fallback
+		 * for a system where that link was never made. */
 		"/dev/jz_adc_aux_0",
+		"/dev/ingenic_adc_aux_0",
 		NULL
 	};
 
