@@ -252,6 +252,17 @@ day|night)
 auto)
 	auto
 	;;
+cron)
+	# What crond calls every minute. It differs from "auto" in one way: on a
+	# camera whose thresholds are not set it does nothing and says nothing,
+	# where "auto" prints the calibration instructions and fails. Both
+	# behaviours are wanted, by different callers - a person running this by
+	# hand needs to be told what is missing, and a timer must not write that
+	# same line to the log 1440 times a day. So the decision to stay quiet is
+	# made here, by the caller that wants quiet, and never inside auto.
+	[ -n "$(env_get dn_night_above)" ] && [ -n "$(env_get dn_day_below)" ] || exit 0
+	auto
+	;;
 light|adc)		# adc: the older name, kept working
 	darkness || die "no reading from the '$(darkness_source)' source"
 	;;
@@ -259,7 +270,7 @@ status)
 	status
 	;;
 *)
-	echo "usage: $(basename "$0") day|night|auto|light|status" >&2
+	echo "usage: $(basename "$0") day|night|auto|cron|light|status" >&2
 	exit 2
 	;;
 esac
