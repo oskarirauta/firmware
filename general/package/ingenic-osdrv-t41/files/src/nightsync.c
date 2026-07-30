@@ -170,6 +170,7 @@
 #define POLL_MS		1000
 #define CONFIG		"/etc/majestic.yaml"
 #define ISP_PROC	"/proc/jz/isp"
+#define ADC_MAX_PLAUSIBLE 100000	/* beyond any real reading, below a wrapped one */
 #define DEFAULT_DELAY	10	/* seconds, only when monitorDelay is unset */
 #define MANUAL_HOLD	90	/* seconds a switch made by hand is left alone */
 #define PLACE_MS	400	/* how long the filter is left in night while placing it */
@@ -297,9 +298,46 @@ static int read_adc(void) {
 		int got = fread(&value, sizeof(value), 1, f) == 1;
 		fclose(f);
 
-		if (got) {
-			return (int)value;
+		if (!got) {
+			continue;
 		}
+
+		/*
+		 * Discard a reading the hardware cannot have produced.
+		 *
+		 * The driver returns raw * VREF*10 / AUXCONST, which for a 12-bit
+		 * conversion tops out just under 18000, and observed readings span
+		 * 0 to about 16000. Occasionally it returns 1047938 instead - always
+		 * that exact value, and more often in darkness than in bright light,
+		 * which points at a conversion read before it has settled: the
+		 * photoresistor's impedance is highest in the dark, so it settles
+		 * slowest there. That number is a raw -145 carried through the
+		 * unsigned multiply and wrapped:
+		 * (2^32 - 145) * 18000 / 4096 truncates to exactly 1047938. So it is
+		 * a failed conversion escaping as an enormous positive number rather
+		 * than an error. It became visible once three readers began polling
+		 * the device at once - majestic's adcReadout, this, and a shell.
+		 *
+		 * The real fix belongs in the driver, which should not let a failed
+		 * conversion out as a value at all. This is the guard that can be
+		 * made from here.
+		 *
+		 * Left alone it is worse than a wrong reading. Higher means darker
+		 * here, so it reads as pitch dark; and because a spike resets the
+		 * persistence clock every time it lands, it does not cause a wrong
+		 * switch so much as prevent a right one - automation stalls with
+		 * nothing in the log to say why.
+		 *
+		 * The ceiling is deliberately generous rather than exact: it has to
+		 * stay clear of a legitimate value even when the driver's invert
+		 * parameter is in use, while a wrapped one is two orders of magnitude
+		 * above anything real.
+		 */
+		if (value > ADC_MAX_PLAUSIBLE) {
+			return -1;
+		}
+
+		return (int)value;
 	}
 
 	return -1;
