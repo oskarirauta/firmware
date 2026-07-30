@@ -491,18 +491,27 @@ int main(void) {
 			hold_until = time(NULL) + MANUAL_HOLD;
 		}
 
-		/* majestic's blind monitor must not be running; see the top of this
-		 * file. Warned about rather than worked around, because there is no
-		 * working around it - it will win every second argument. */
+		/* lightMonitor on means majestic's own light monitor is running, so
+		 * this one stands down - two of them deciding would fight, and the
+		 * fight is visible: majestic wins about a second after anything sets
+		 * night, and the camera flips every few seconds.
+		 *
+		 * That is a legitimate choice rather than a mistake, so it is stated
+		 * once and not repeated. It is worth knowing what it costs, though.
+		 * On this SoC majestic's software monitor compares an isp_again it
+		 * never fills, which is always -1 and therefore below any minThreshold,
+		 * so it settles on day and stays there. Its IR-cut and lamp settings
+		 * still work - those are GPIOs and majestic drives them itself - and
+		 * the grey conversion still follows if anything does reach night mode.
+		 * What is lost is the switching: nothing will move it off day. */
 		if (cfg.light_monitor && !cfg.have_sensor_pin && !warned_monitor) {
-			syslog(LOG_WARNING,
-				"automatic day/night is OFF because nightMode.lightMonitor is "
-				"on. That starts majestic's own light monitor, which cannot "
-				"work on this SoC - its isp_again is always -1, so it forces "
-				"day mode a second after anything sets night, and the camera "
-				"flips every few seconds. Turn lightMonitor OFF: the "
-				"thresholds you set are used here instead, and with it off "
-				"the Preview buttons keep working too.");
+			syslog(LOG_INFO,
+				"standing down: nightMode.lightMonitor is on, so majestic's "
+				"own monitor decides. Note that it cannot see the light on "
+				"this SoC - its isp_again is always -1 - so it will hold day "
+				"mode. Turn lightMonitor off to have the switching done here "
+				"from the same thresholds, which also keeps the Preview "
+				"buttons working.");
 			warned_monitor = 1;
 		}
 
